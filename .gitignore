@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build outputs
+.next/
+dist/
+build/
+*.egg-info/
+
+# Environment files — never commit these
+.env
+.env.local
+.env.production
+
+# Turborepo cache
+.turbo/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Python
+*.pyo
+.pytest_cache/
+
+# Editors
+.vscode/settings.json
+.idea/
+
+# Repo processing temp files (our backend will clone repos here temporarily)
+apps/api/temp_repos/

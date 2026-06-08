@@ -1,0 +1,44 @@
+name: Deploy Web (Vercel)
+
+# Only fires on pushes to main, and only when files
+# inside apps/web or the shared package actually changed.
+# A backend-only change will NOT trigger a frontend redeploy.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/web/**"
+      - "packages/shared/**"
+
+jobs:
+  deploy:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repo code onto the GitHub runner machine
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Step 3: Install Vercel CLI globally
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      # Step 4: Pull Vercel project settings (links this repo to your Vercel project)
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      # Step 5: Build the project using Vercel's build system
+      - name: Build project
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      # Step 6: Deploy the pre-built output to Vercel
+      - name: Deploy to Vercel
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}

@@ -1,0 +1,28 @@
+name: Deploy API (Render)
+
+# Only fires when backend files change.
+# A frontend-only change will NOT redeploy the API.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/api/**"
+
+jobs:
+  deploy:
+    name: Trigger Render Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Hit Render's deploy webhook URL
+      # Render gives you a unique webhook URL per service.
+      # When this URL receives a POST request, Render pulls
+      # the latest main and redeploys automatically.
+      - name: Trigger Render deployment
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
