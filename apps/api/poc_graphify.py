@@ -13,8 +13,8 @@ import json
 from pathlib import Path
 
 import psutil
-from git import Repo
-from graphify.extract import extract, collect_files
+from git import Repo # type: ignore
+from graphify.extract import extract, collect_files # type: ignore
 
 # ------------------------------------------------------------------ #
 # CONFIG
