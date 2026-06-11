@@ -16,18 +16,18 @@ export default function LoginPage() {
     }
 
     return (
-        <main className="min-h-screen flex items-center justify-center bg-neutral-950">
+        <main className="min-h-screen flex items-center justify-center bg-[var(--bg-base)]">
             <div className="flex flex-col items-center gap-6">
                 <div className="flex flex-col items-center gap-2">
-                    <h1 className="text-3xl font-bold text-white">InlineExplainer</h1>
-                    <p className="text-neutral-400 text-sm">
+                    <h1 className="text-3xl font-bold text-[var(--text-primary)]">InlineExplainer</h1>
+                    <p className="text-[var(--text-secondary)] text-sm">
                         Understand any codebase, inline.
                     </p>
                 </div>
 
                 <button
                     onClick={handleGitHubLogin}
-                    className="flex items-center gap-3 px-6 py-3 bg-white text-black font-medium rounded-lg hover:bg-neutral-200 transition-colors"
+                    className="flex items-center gap-3 px-6 py-3 bg-[var(--accent)] text-[var(--bg-base)] font-medium rounded-lg hover:bg-[var(--accent-hover)] transition-colors"
                 >
                     <svg
                         className="w-5 h-5"
