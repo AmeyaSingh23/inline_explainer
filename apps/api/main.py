@@ -9,11 +9,16 @@ from fastapi import FastAPI  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 
 from core.config import APP_ENV  # type: ignore
-
+import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup / shutdown logic goes here as the project grows."""
+    # Wipe any leftover temp dirs from previous runs (Windows cleanup quirk)
+    import shutil
+    from core.config import TEMP_REPO_DIR
+    if os.path.exists(TEMP_REPO_DIR):
+        shutil.rmtree(TEMP_REPO_DIR, ignore_errors=True)
+        print(f"[startup] Cleared leftover temp dirs in {TEMP_REPO_DIR}")
     print(f"[startup] InlineExplainer API — env={APP_ENV}")
     yield
     print("[shutdown] InlineExplainer API shutting down.")
