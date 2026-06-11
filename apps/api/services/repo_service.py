@@ -66,16 +66,6 @@ def _force_remove(path: str) -> None:
         except Exception:
             pass
 
-    # DEBUG — remove after testing
-    for dirpath, dirnames, filenames in os.walk(path):
-        for fname in filenames:
-            fpath = os.path.join(dirpath, fname)
-            try:
-                os.remove(fpath)
-                print(f"[cleanup] deleted: {fpath}")
-            except Exception as e:
-                print(f"[cleanup] LOCKED: {fpath} — {e}")
-
     shutil.rmtree(path, onexc=_on_error)
 
 def process_repo(repo_url: str, job_id: str) -> dict:
