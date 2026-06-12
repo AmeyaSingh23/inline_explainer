@@ -22,15 +22,53 @@ export default function LandingPage() {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [statusMsg, setStatusMsg] = useState("");
 
-  function handleSubmit() {
+  async function handleSubmit() {
     setError("");
-    const parsed = parseRepoUrl(url);
+    const parsed = parseRepoUrl(url.trim());
     if (!parsed) {
       setError("Enter a valid GitHub, GitLab, or Bitbucket repository URL.");
       return;
     }
-    router.push(`/${parsed.owner}/${parsed.repo}`);
+
+    setLoading(true);
+    setStatusMsg("Cloning repository...");
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      const res = await fetch(`${apiUrl}/api/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo_url: url.trim() }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.detail ?? `Server error (${res.status})`);
+      }
+
+      setStatusMsg("Extracting AST graph...");
+      const data = await res.json();
+
+      // Store graph in sessionStorage keyed by repo URL so workspace can read it
+      sessionStorage.setItem(
+        `graph:${parsed.owner}/${parsed.repo}`,
+        JSON.stringify({
+          job_id: data.job_id,
+          nodes: data.nodes,
+          edges: data.edges,
+        })
+      );
+
+      setStatusMsg("Done! Opening workspace...");
+      router.push(`/${parsed.owner}/${parsed.repo}`);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Something went wrong. Try again.");
+      setLoading(false);
+      setStatusMsg("");
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -41,7 +79,6 @@ export default function LandingPage() {
     <main className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg-base)] px-4">
       <div className="w-full max-w-2xl flex flex-col gap-8">
 
-        {/* Header */}
         <div className="flex flex-col gap-2">
           <h1 className="text-4xl font-bold text-[var(--text-primary)]">InlineExplainer</h1>
           <p className="text-[var(--text-secondary)]">
@@ -50,7 +87,6 @@ export default function LandingPage() {
           </p>
         </div>
 
-        {/* Input */}
         <div className="flex flex-col gap-2">
           <div className="flex gap-2">
             <input
@@ -58,26 +94,31 @@ export default function LandingPage() {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={handleKeyDown}
+              disabled={loading}
               placeholder="https://github.com/owner/repo"
-              className="flex-1 px-4 py-3 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--text-secondary)] transition-colors"
+              className="flex-1 px-4 py-3 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--text-secondary)] transition-colors disabled:opacity-50"
             />
             <button
               onClick={handleSubmit}
-              className="px-6 py-3 bg-[var(--accent)] text-[var(--bg-base)] font-medium rounded-lg hover:bg-[var(--accent-hover)] transition-colors whitespace-nowrap"
+              disabled={loading}
+              className="px-6 py-3 bg-[var(--accent)] text-[var(--bg-base)] font-medium rounded-lg hover:bg-[var(--accent-hover)] transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Explain →
+              {loading ? "Analyzing..." : "Explain →"}
             </button>
           </div>
-          {error && (
-            <p className="text-[var(--error)] text-sm">{error}</p>
+
+          {/* Status message shown during loading */}
+          {loading && statusMsg && (
+            <p className="text-[var(--text-muted)] text-sm">{statusMsg}</p>
           )}
+
+          {/* Error message */}
+          {error && <p className="text-[var(--error)] text-sm">{error}</p>}
         </div>
 
-        {/* Supported hosts */}
         <p className="text-[var(--text-muted)] text-sm">
-          Supports GitHub, GitLab, and Bitbucket public repositories.
+          Supports GitHub, GitLab, and Bitbucket public repositories up to 50 MB.
         </p>
-
       </div>
     </main>
   );

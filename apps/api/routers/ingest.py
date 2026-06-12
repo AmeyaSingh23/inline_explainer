@@ -1,8 +1,9 @@
 """
-/api/ingest  — accepts a public repo URL and kicks off async processing.
+/api/ingest  — accepts a public repo URL and kicks off AST processing.
 """
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, HTTPException  # type: ignore
 from pydantic import BaseModel, field_validator  # type: ignore
@@ -38,7 +39,11 @@ class IngestRequest(BaseModel):
 class IngestResponse(BaseModel):
     job_id: str
     repo_url: str
-    message: str
+    node_count: int
+    edge_count: int
+    extraction_time_s: float
+    nodes: list[dict[str, Any]]
+    edges: list[dict[str, Any]]
 
 
 @router.post("/ingest", response_model=IngestResponse)
@@ -54,8 +59,16 @@ async def ingest(payload: IngestRequest):
     except CloneError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    graph = result["graph"]
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+
     return IngestResponse(
         job_id=result["job_id"],
         repo_url=result["repo_url"],
-        message=f"AST extraction complete. {result['node_count']} nodes extracted in {result['extraction_time_s']}s.",
+        node_count=len(nodes),
+        edge_count=len(edges),
+        extraction_time_s=result["extraction_time_s"],
+        nodes=nodes,
+        edges=edges,
     )
