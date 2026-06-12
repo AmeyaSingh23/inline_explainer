@@ -26,62 +26,7 @@ function detectLanguage(path: string): string {
     return map[ext ?? ""] ?? "plaintext";
 }
 
-function splitIntoBlocks(code: string, language: string, filePath: string): CodeBlock[] {
-    const lines = code.split("\n");
-    const blocks: CodeBlock[] = [];
-
-    if (language === "python") {
-        let blockStart = 0;
-        let inBlock = false;
-        for (let i = 0; i < lines.length; i++) {
-            const isDefOrClass = /^(def |class |async def )/.test(lines[i]);
-            if (isDefOrClass) {
-                if (inBlock && i > blockStart) {
-                    blocks.push({
-                        id: `${filePath}:${blockStart}`,
-                        startLine: blockStart,
-                        endLine: i - 1,
-                        code: lines.slice(blockStart, i).join("\n"),
-                        language,
-                    });
-                }
-                blockStart = i;
-                inBlock = true;
-            }
-        }
-        if (inBlock) {
-            blocks.push({
-                id: `${filePath}:${blockStart}`,
-                startLine: blockStart,
-                endLine: lines.length - 1,
-                code: lines.slice(blockStart).join("\n"),
-                language,
-            });
-        }
-    } else {
-        const CHUNK = 60;
-        for (let i = 0; i < lines.length; i += CHUNK) {
-            const end = Math.min(i + CHUNK - 1, lines.length - 1);
-            blocks.push({
-                id: `${filePath}:${i}`,
-                startLine: i,
-                endLine: end,
-                code: lines.slice(i, end + 1).join("\n"),
-                language,
-            });
-        }
-    }
-
-    return blocks.length > 0 ? blocks : [{
-        id: `${filePath}:0`,
-        startLine: 0,
-        endLine: lines.length - 1,
-        code,
-        language,
-    }];
-}
-
-export default function CodePanel({ owner, repo, selectedFile, activeBlockId, onBlockClick, onBlocksReady }: Props) {
+export default function CodePanel({ owner, repo, selectedFile, onBlocksReady }: Props) {
     const [fileContent, setFileContent] = useState<string>("");
     const [language, setLanguage] = useState("plaintext");
     const [loadingFile, setLoadingFile] = useState(false);
@@ -101,8 +46,15 @@ export default function CodePanel({ owner, repo, selectedFile, activeBlockId, on
                 const lang = detectLanguage(selectedFile!);
                 setLanguage(lang);
                 setFileContent(decoded);
-                const blocks = splitIntoBlocks(decoded, lang, selectedFile!);
-                onBlocksReady(blocks);
+
+                const lines = decoded.split("\n");
+                onBlocksReady([{
+                    id: selectedFile!,
+                    startLine: 0,
+                    endLine: lines.length - 1,
+                    code: decoded,
+                    language: lang,
+                }]);
             } catch (e) {
                 console.error("Failed to fetch file:", e);
             } finally {
