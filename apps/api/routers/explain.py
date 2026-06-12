@@ -68,7 +68,7 @@ Use plain markdown. No headers. No bullet points unless genuinely needed. Write 
 
 
 async def _call_nvidia(prompt: str) -> str:
-    """Call Nemotron 3 Super 120B via NVIDIA NIM."""
+    """Call Llama 3.1 70B via NVIDIA NIM."""
     async with httpx.AsyncClient(timeout=30.0) as client:
         res = await client.post(
             f"{NVIDIA_BASE_URL}/chat/completions",
@@ -79,7 +79,7 @@ async def _call_nvidia(prompt: str) -> str:
             json={
                 "model": NVIDIA_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 512,
+                "max_tokens": 2048,
                 "temperature": 0.3,
             },
         )
@@ -95,7 +95,7 @@ async def _call_gemini(prompt: str) -> str:
             f"{GEMINI_BASE_URL}/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}",
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"maxOutputTokens": 512, "temperature": 0.3},
+                "generationConfig": {"maxOutputTokens": 2048, "temperature": 0.3},
             },
         )
         res.raise_for_status()

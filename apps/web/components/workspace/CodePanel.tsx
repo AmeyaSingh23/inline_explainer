@@ -59,7 +59,7 @@ function splitIntoBlocks(code: string, language: string, filePath: string): Code
             });
         }
     } else {
-        const CHUNK = 30;
+        const CHUNK = 60;
         for (let i = 0; i < lines.length; i += CHUNK) {
             const end = Math.min(i + CHUNK - 1, lines.length - 1);
             blocks.push({
