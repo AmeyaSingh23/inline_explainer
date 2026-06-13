@@ -10,6 +10,7 @@ interface Props {
     filePath: string;
     fileCode: string;
     fileExplanation: string;
+    repoFileTree: string[];
     owner: string;
     repo: string;
 }
@@ -26,7 +27,7 @@ const MODEL_LABELS: Record<ModelTier, { label: string; sublabel: string }> = {
     smart: { label: "Smart", sublabel: "Llama 70B+ / Pro" },
 };
 
-export default function ChatTray({ open, onClose, selectedText, filePath, fileCode, fileExplanation, owner, repo }: Props) {
+export default function ChatTray({ open, onClose, selectedText, filePath, fileCode, fileExplanation, repoFileTree, owner, repo }: Props) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
@@ -37,7 +38,6 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const prevSelectedTextRef = useRef<string>("");
 
-    // When chat opens with new selected text, reset conversation
     useEffect(() => {
         if (!open) return;
         if (selectedText && selectedText !== prevSelectedTextRef.current) {
@@ -49,7 +49,6 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
         }
     }, [open, selectedText]);
 
-    // Auto-scroll to bottom on new messages
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, loading]);
@@ -61,6 +60,7 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
         setMessages(newMessages);
         setInput("");
         setLoading(true);
+        setModelUsed("");
 
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -74,13 +74,14 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
                     file_explanation: fileExplanation,
                     selected_text: selectedText,
                     model_tier: modelTier,
+                    repo_file_tree: repoFileTree,
                 }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
             setModelUsed(data.model_used);
-        } catch (e) {
+        } catch {
             setMessages((prev) => [
                 ...prev,
                 { role: "assistant", content: "Something went wrong. Please try again." },
@@ -100,13 +101,12 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
     if (!open) return null;
 
     return (
-        <div className="h-full w-full bg-[var(--bg-surface)] flex flex-col border-l border-[var(--border)]">
+        <div className="h-full w-full bg-[var(--bg-surface)] flex flex-col border-l border-[var(--border)] min-w-0">
 
             {/* Header */}
             <div className="flex items-center justify-between px-4 h-12 border-b border-[var(--border)] shrink-0">
                 <span className="text-[var(--text-primary)] text-sm font-medium">Deep Dive</span>
                 <div className="flex items-center gap-2">
-                    {/* Model picker */}
                     <div className="relative">
                         <button
                             onClick={() => setShowModelMenu((v) => !v)}
@@ -147,27 +147,27 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
             {selectedText && (
                 <div className="px-4 py-2 border-b border-[var(--border)] shrink-0">
                     <p className="text-[10px] text-[var(--text-muted)] mb-1">Asking about:</p>
-                    <p className="text-xs text-[var(--text-secondary)] bg-[var(--bg-elevated)] rounded px-2 py-1.5 line-clamp-2 font-mono">
+                    <p className="text-xs text-[var(--text-secondary)] bg-[var(--bg-elevated)] rounded px-2 py-1.5 line-clamp-2 font-mono break-all">
                         {selectedText}
                     </p>
                 </div>
             )}
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 flex flex-col gap-3 min-w-0">
                 {messages.length === 0 && !loading && (
                     <div className="flex-1 flex items-center justify-center text-[var(--text-muted)] text-xs text-center px-4">
                         Ask anything about the selected passage or this file.
                     </div>
                 )}
                 {messages.map((msg, i) => (
-                    <div key={i} className={`flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                    <div key={i} className={`flex flex-col gap-1 min-w-0 ${msg.role === "user" ? "items-end" : "items-start"}`}>
                         {msg.role === "user" ? (
-                            <div className="max-w-[85%] px-3 py-2 rounded-lg bg-[var(--accent)] text-[var(--bg-base)] text-xs leading-relaxed">
+                            <div className="max-w-[85%] px-3 py-2 rounded-lg bg-[var(--accent)] text-[var(--bg-base)] text-xs leading-relaxed break-words">
                                 {msg.content}
                             </div>
                         ) : (
-                            <div className="max-w-[95%] text-xs text-[var(--text-secondary)] leading-relaxed prose prose-sm [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ul]:pl-4 [&>code]:font-mono [&>code]:text-xs [&>code]:bg-[var(--bg-elevated)] [&>code]:px-1 [&>code]:rounded">
+                            <div className="w-full min-w-0 text-xs text-[var(--text-secondary)] leading-relaxed prose prose-sm max-w-none overflow-x-hidden [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ul]:pl-4 [&>code]:font-mono [&>code]:text-xs [&>code]:bg-[var(--bg-elevated)] [&>code]:px-1 [&>code]:rounded [&>pre]:overflow-x-auto [&>pre]:max-w-full">
                                 <ReactMarkdown>{msg.content}</ReactMarkdown>
                             </div>
                         )}
@@ -185,9 +185,9 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
                 <div ref={bottomRef} />
             </div>
 
-            {/* Model used label */}
+            {/* Via label */}
             {modelUsed && (
-                <div className="px-4 py-1 shrink-0">
+                <div className="px-4 py-1 shrink-0 border-t border-[var(--border-subtle)]">
                     <p className="text-[10px] text-[var(--text-muted)]">via {modelUsed}</p>
                 </div>
             )}
@@ -202,7 +202,7 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
                         onKeyDown={handleKeyDown}
                         placeholder="Ask a question... (Enter to send)"
                         rows={1}
-                        className="flex-1 resize-none bg-transparent text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none leading-relaxed max-h-32 overflow-y-auto"
+                        className="flex-1 resize-none bg-transparent text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none leading-relaxed max-h-32 overflow-y-auto min-w-0"
                         style={{ fieldSizing: "content" } as React.CSSProperties}
                     />
                     <button

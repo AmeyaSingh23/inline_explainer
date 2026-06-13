@@ -37,6 +37,7 @@ class ChatRequest(BaseModel):
     file_explanation: str
     selected_text: str
     model_tier: str = "fast"             # "fast" or "smart"
+    repo_file_tree: list[str] = []
 
 
 class ChatResponse(BaseModel):
@@ -45,10 +46,17 @@ class ChatResponse(BaseModel):
 
 
 def _build_system_prompt(req: ChatRequest) -> str:
-    # We use \x60\x60\x60 to prevent markdown rendering splits
+    file_tree_section = ""
+    if req.repo_file_tree:
+        tree_str = "\n".join(req.repo_file_tree[:300])
+        file_tree_section = f"\n\nCOMPLETE FILE TREE OF THIS REPOSITORY (all files that exist):\n{tree_str}"
+
     return f"""You are a senior software engineer helping a developer deeply understand a specific part of a codebase.
 
-File: {req.file_path}
+IMPORTANT: When asked about what files exist, what folders contain, or which files are in the project — always answer using the COMPLETE FILE TREE provided below. Do not infer file locations from import paths or make assumptions.
+{file_tree_section}
+
+Currently open file: {req.file_path}
 
 Full file code:
 \x60\x60\x60
@@ -61,7 +69,7 @@ Explanation of this file already generated:
 The developer selected this passage to ask about:
 \"\"\"{req.selected_text}\"\"\"
 
-Answer their questions clearly and concisely. You can reference the file code and explanation above. Write in plain markdown."""
+Answer their questions clearly and concisely. Reference the file tree above when asked about project structure. Write in plain markdown."""
 
 
 async def _call_nvidia(system_prompt: str, messages: list[ChatMessage], model: str) -> str:

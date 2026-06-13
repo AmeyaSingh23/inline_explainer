@@ -26,6 +26,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
     const [explanations, setExplanations] = useState<ExplanationBlock[]>([]);
     const [fileCode, setFileCode] = useState("");
     const [fileExplanation, setFileExplanation] = useState("");
+    const [repoFileTree, setRepoFileTree] = useState<string[]>([]);
 
     function handleTextSelect(text: string) {
         setSelectedText(text);
@@ -46,7 +47,13 @@ export default function WorkspaceShell({ owner, repo }: Props) {
             <div className="flex flex-1 overflow-hidden">
                 <Group orientation="horizontal">
                     <Panel defaultSize={15} minSize={10}>
-                        <FileTree owner={owner} repo={repo} selectedFile={selectedFile} onSelectFile={setSelectedFile} />
+                        <FileTree
+                            owner={owner}
+                            repo={repo}
+                            selectedFile={selectedFile}
+                            onSelectFile={setSelectedFile}
+                            onTreeReady={setRepoFileTree}
+                        />
                     </Panel>
                     <ResizeHandle />
                     <Panel defaultSize={chatOpen ? 35 : 42} minSize={20}>
@@ -88,6 +95,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                                     filePath={selectedFile ?? ""}
                                     fileCode={fileCode}
                                     fileExplanation={fileExplanation}
+                                    repoFileTree={repoFileTree}
                                     owner={owner}
                                     repo={repo}
                                 />
