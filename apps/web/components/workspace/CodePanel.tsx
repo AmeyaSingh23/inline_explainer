@@ -11,6 +11,7 @@ interface Props {
     activeBlockId: string | null;
     onBlockClick: (id: string) => void;
     onBlocksReady: (blocks: CodeBlock[]) => void;
+    onFileCodeReady: (code: string) => void;
 }
 
 function detectLanguage(path: string): string {
@@ -26,7 +27,7 @@ function detectLanguage(path: string): string {
     return map[ext ?? ""] ?? "plaintext";
 }
 
-export default function CodePanel({ owner, repo, selectedFile, onBlocksReady }: Props) {
+export default function CodePanel({ owner, repo, selectedFile, onBlocksReady, onFileCodeReady }: Props) {
     const [fileContent, setFileContent] = useState<string>("");
     const [language, setLanguage] = useState("plaintext");
     const [loadingFile, setLoadingFile] = useState(false);
@@ -46,6 +47,7 @@ export default function CodePanel({ owner, repo, selectedFile, onBlocksReady }: 
                 const lang = detectLanguage(selectedFile!);
                 setLanguage(lang);
                 setFileContent(decoded);
+                onFileCodeReady(decoded);
 
                 const lines = decoded.split("\n");
                 onBlocksReady([{
