@@ -53,8 +53,10 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 from routers.ingest import router as ingest_router  # type: ignore
 from routers.explain import router as explain_router  # type: ignore
+from routers.chat import router as chat_router  # type: ignore
 app.include_router(ingest_router, prefix="/api")
 app.include_router(explain_router, prefix="/api")
+app.include_router(chat_router, prefix="/api")
 
 
 # ---------------------------------------------------------------------------

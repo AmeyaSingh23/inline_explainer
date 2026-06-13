@@ -13,6 +13,7 @@ interface Props {
     repo: string;
     selectedFile: string | null;
     onSelectFile: (path: string) => void;
+    onTreeReady?: (files: string[]) => void;
 }
 
 // Build nested tree structure from flat paths
@@ -106,7 +107,7 @@ function TreeItem({
     );
 }
 
-export default function FileTree({ owner, repo, selectedFile, onSelectFile }: Props) {
+export default function FileTree({ owner, repo, selectedFile, onSelectFile, onTreeReady }: Props) {
     const [tree, setTree] = useState<Record<string, unknown>>({});
     const [loadingTree, setLoadingTree] = useState(true);
     const [treeError, setTreeError] = useState("");
@@ -132,6 +133,7 @@ export default function FileTree({ owner, repo, selectedFile, onSelectFile }: Pr
                     )
                     .map((n) => n.path);
                 setTree(buildTree(files));
+                onTreeReady?.(files);
             } catch (e: unknown) {
                 setTreeError(e instanceof Error ? e.message : "Failed to load file tree.");
             } finally {
