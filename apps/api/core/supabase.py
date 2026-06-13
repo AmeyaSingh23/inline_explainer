@@ -87,3 +87,37 @@ async def upsert_explanation(user_id: str, repository_id: str, file_path: str, e
             json=payload,
         )
         res.raise_for_status()
+
+
+async def get_chat_session(user_id: str, repository_id: str, file_path: str) -> list[dict]:
+    """Returns the saved messages array for (repository_id, file_path), or [] if none."""
+    params = {
+        "select": "messages",
+        "user_id": f"eq.{user_id}",
+        "repository_id": f"eq.{repository_id}",
+        "file_path": f"eq.{file_path}",
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        res = await client.get(f"{REST_URL}/chat_sessions", headers=_HEADERS, params=params)
+        res.raise_for_status()
+        rows = res.json()
+        return rows[0]["messages"] if rows else []
+
+
+async def upsert_chat_session(user_id: str, repository_id: str, file_path: str, messages: list[dict]) -> None:
+    """Inserts or updates the messages array for (repository_id, file_path)."""
+    headers = {**_HEADERS, "Prefer": "resolution=merge-duplicates"}
+    payload = {
+        "user_id": user_id,
+        "repository_id": repository_id,
+        "file_path": file_path,
+        "messages": messages,
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        res = await client.post(
+            f"{REST_URL}/chat_sessions",
+            headers=headers,
+            params={"on_conflict": "repository_id,file_path"},
+            json=payload,
+        )
+        res.raise_for_status()
