@@ -1,11 +1,14 @@
 """
 /api/explain — NVIDIA Llama 70B primary, Gemini 2.5 Flash fallback.
 Whole-file, flow-aware explanation with 1-hop cross-file context.
+Cached in Supabase explanations table, keyed by (repository_id, file_path).
 """
 import httpx  # type: ignore
-from fastapi import APIRouter, HTTPException  # type: ignore
+from fastapi import APIRouter, HTTPException, Depends  # type: ignore
 from pydantic import BaseModel  # type: ignore
 from core.config import NVIDIA_API_KEY, GEMINI_API_KEY  # type: ignore
+from core.auth import get_current_user_id  # type: ignore
+from core.supabase import get_explanation, upsert_explanation  # type: ignore
 
 router = APIRouter()
 
@@ -32,12 +35,14 @@ class ExplainRequest(BaseModel):
     code: str
     language: str
     file_path: str
+    repository_id: str
     connected_files: list[ConnectedFile] = []
 
 
 class ExplainResponse(BaseModel):
     explanation: str
     model_used: str
+    cached: bool
 
 
 def _build_prompt(req: ExplainRequest) -> str:
@@ -100,20 +105,38 @@ async def _call_gemini(prompt: str) -> str:
 
 
 @router.post("/explain", response_model=ExplainResponse)
-async def explain(payload: ExplainRequest):
+async def explain(payload: ExplainRequest, user_id: str = Depends(get_current_user_id)):
+    # 1. Check Supabase cache
+    cached = await get_explanation(user_id, payload.repository_id, payload.file_path)
+    if cached:
+        return ExplainResponse(explanation=cached, model_used="cache", cached=True)
+
+    # 2. Cache miss — call AI providers
     if not NVIDIA_API_KEY and not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="No AI API keys configured.")
+
     prompt = _build_prompt(payload)
+    text = None
+    model_used = None
+
     if NVIDIA_API_KEY:
         try:
             text = await _call_nvidia(prompt)
-            return ExplainResponse(explanation=text, model_used="llama-3.1-70b")
+            model_used = "llama-3.1-70b"
         except Exception as e:
             print(f"[explain] NVIDIA failed ({e}), falling back to Gemini...")
-    if GEMINI_API_KEY:
+
+    if text is None and GEMINI_API_KEY:
         try:
             text = await _call_gemini(prompt)
-            return ExplainResponse(explanation=text, model_used="gemini-2.5-flash")
+            model_used = "gemini-2.5-flash"
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Both providers failed: {e}")
-    raise HTTPException(status_code=500, detail="No available AI provider.")
+
+    if text is None:
+        raise HTTPException(status_code=500, detail="No available AI provider.")
+
+    # 3. Store in Supabase
+    await upsert_explanation(user_id, payload.repository_id, payload.file_path, text)
+
+    return ExplainResponse(explanation=text, model_used=model_used, cached=False)

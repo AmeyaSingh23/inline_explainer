@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import FileTree from "./FileTree";
 import CodePanel from "./CodePanel";
 import ExplanationPanel from "./ExplanationPanel";
@@ -27,6 +27,15 @@ export default function WorkspaceShell({ owner, repo }: Props) {
     const [fileCode, setFileCode] = useState("");
     const [fileExplanation, setFileExplanation] = useState("");
     const [repoFileTree, setRepoFileTree] = useState<string[]>([]);
+    const [repositoryId, setRepositoryId] = useState("");
+
+    useEffect(() => {
+        const raw = sessionStorage.getItem(`graph:${owner}/${repo}`);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed.job_id) setRepositoryId(parsed.job_id);
+        }
+    }, [owner, repo]);
 
     function handleTextSelect(text: string) {
         setSelectedText(text);
@@ -96,6 +105,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                                     fileCode={fileCode}
                                     fileExplanation={fileExplanation}
                                     repoFileTree={repoFileTree}
+                                    repositoryId={repositoryId}
                                     owner={owner}
                                     repo={repo}
                                 />

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import { createClient } from "@/lib/supabase/client";
 
 interface Props {
     open: boolean;
@@ -11,12 +12,13 @@ interface Props {
     fileCode: string;
     fileExplanation: string;
     repoFileTree: string[];
+    repositoryId: string;
     owner: string;
     repo: string;
 }
 
 interface Message {
-    role: "user" | "assistant";
+    role: "user" | "assistant" | "context";
     content: string;
 }
 
@@ -27,27 +29,77 @@ const MODEL_LABELS: Record<ModelTier, { label: string; sublabel: string }> = {
     smart: { label: "Smart", sublabel: "Llama 70B+ / Pro" },
 };
 
-export default function ChatTray({ open, onClose, selectedText, filePath, fileCode, fileExplanation, repoFileTree, owner, repo }: Props) {
+export default function ChatTray({ open, onClose, selectedText, filePath, fileCode, fileExplanation, repoFileTree, repositoryId, owner, repo }: Props) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    const [loadingSession, setLoadingSession] = useState(false);
     const [modelTier, setModelTier] = useState<ModelTier>("fast");
     const [modelUsed, setModelUsed] = useState("");
     const [showModelMenu, setShowModelMenu] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
-    const prevSelectedTextRef = useRef<string>("");
+    const loadedFileRef = useRef<string>("");
 
+    // Load chat history when the file changes
     useEffect(() => {
-        if (!open) return;
-        if (selectedText && selectedText !== prevSelectedTextRef.current) {
-            prevSelectedTextRef.current = selectedText;
-            setMessages([]);
-            setInput("");
-            setModelUsed("");
-            setTimeout(() => inputRef.current?.focus(), 50);
+        if (!open || !filePath || !repositoryId) return;
+        if (loadedFileRef.current === filePath) return;
+        loadedFileRef.current = filePath;
+
+        setMessages([]);
+        setInput("");
+        setModelUsed("");
+        setLoadingSession(true);
+
+        async function loadSession() {
+            try {
+                const supabase = createClient();
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) return;
+
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+                const res = await fetch(
+                    `${apiUrl}/api/chat/session?repository_id=${encodeURIComponent(repositoryId)}&file_path=${encodeURIComponent(filePath)}`,
+                    { headers: { Authorization: `Bearer ${session.access_token}` } }
+                );
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                let history = data.messages || [];
+                if (selectedText) {
+                    const lastMsg = history[history.length - 1];
+                    if (!lastMsg || lastMsg.role !== "context" || lastMsg.content !== selectedText) {
+                        history = [...history, { role: "context", content: selectedText }];
+                    }
+                }
+                setMessages(history);
+            } catch {
+                if (selectedText) {
+                    setMessages([{ role: "context", content: selectedText }]);
+                }
+            } finally {
+                setLoadingSession(false);
+                setTimeout(() => inputRef.current?.focus(), 50);
+            }
         }
-    }, [open, selectedText]);
+        loadSession();
+    }, [open, filePath, repositoryId]);
+
+    // Append new context if selectedText changes while the tray is open
+    useEffect(() => {
+        if (!open || !selectedText || loadingSession) return;
+
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg && lastMsg.role === "context" && lastMsg.content === selectedText) {
+            return;
+        }
+
+        setMessages((prev) => [
+            ...prev,
+            { role: "context", content: selectedText }
+        ]);
+    }, [selectedText, open, loadingSession]);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -63,10 +115,17 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
         setModelUsed("");
 
         try {
+            const supabase = createClient();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error("Not authenticated");
+
             const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
             const res = await fetch(`${apiUrl}/api/chat`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session.access_token}`,
+                },
                 body: JSON.stringify({
                     messages: newMessages,
                     file_path: filePath,
@@ -75,6 +134,7 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
                     selected_text: selectedText,
                     model_tier: modelTier,
                     repo_file_tree: repoFileTree,
+                    repository_id: repositoryId,
                 }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -102,8 +162,6 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
 
     return (
         <div className="h-full w-full bg-[var(--bg-surface)] flex flex-col border-l border-[var(--border)] min-w-0">
-
-            {/* Header */}
             <div className="flex items-center justify-between px-4 h-12 border-b border-[var(--border)] shrink-0">
                 <span className="text-[var(--text-primary)] text-sm font-medium">Deep Dive</span>
                 <div className="flex items-center gap-2">
@@ -143,26 +201,35 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
                 </div>
             </div>
 
-            {/* Selected text context pill */}
-            {selectedText && (
-                <div className="px-4 py-2 border-b border-[var(--border)] shrink-0">
-                    <p className="text-[10px] text-[var(--text-muted)] mb-1">Asking about:</p>
-                    <p className="text-xs text-[var(--text-secondary)] bg-[var(--bg-elevated)] rounded px-2 py-1.5 line-clamp-2 font-mono break-all">
-                        {selectedText}
-                    </p>
-                </div>
-            )}
 
-            {/* Messages */}
+
             <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 flex flex-col gap-3 min-w-0">
-                {messages.length === 0 && !loading && (
+                {loadingSession && (
+                    <div className="flex-1 flex items-center justify-center text-[var(--text-muted)] text-xs">
+                        Loading conversation...
+                    </div>
+                )}
+                {!loadingSession && messages.length === 0 && !loading && (
                     <div className="flex-1 flex items-center justify-center text-[var(--text-muted)] text-xs text-center px-4">
                         Ask anything about the selected passage or this file.
                     </div>
                 )}
                 {messages.map((msg, i) => (
                     <div key={i} className={`flex flex-col gap-1 min-w-0 ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                        {msg.role === "user" ? (
+                        {msg.role === "context" ? (
+                            <div className="w-full flex flex-col gap-1.5 my-2 shrink-0">
+                                <div className="flex items-center gap-1.5 text-[9px] text-[var(--text-muted)] font-mono uppercase tracking-wider">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                    </svg>
+                                    Asking about code passage
+                                </div>
+                                <div className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 font-mono text-[11px] text-[var(--text-secondary)] overflow-x-auto whitespace-pre leading-relaxed break-all">
+                                    {msg.content}
+                                </div>
+                            </div>
+                        ) : msg.role === "user" ? (
                             <div className="max-w-[85%] px-3 py-2 rounded-lg bg-[var(--accent)] text-[var(--bg-base)] text-xs leading-relaxed break-words">
                                 {msg.content}
                             </div>
@@ -185,14 +252,12 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
                 <div ref={bottomRef} />
             </div>
 
-            {/* Via label */}
             {modelUsed && (
                 <div className="px-4 py-1 shrink-0 border-t border-[var(--border-subtle)]">
                     <p className="text-[10px] text-[var(--text-muted)]">via {modelUsed}</p>
                 </div>
             )}
 
-            {/* Input */}
             <div className="px-4 py-3 border-t border-[var(--border)] shrink-0">
                 <div className="flex items-end gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 focus-within:border-[var(--text-muted)] transition-colors">
                     <textarea

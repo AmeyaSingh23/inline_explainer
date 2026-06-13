@@ -2,11 +2,14 @@
 /api/chat — conversational Deep Dive chat, scoped to a specific file context.
 NVIDIA Llama 70B primary, Gemini 2.5 Flash fallback.
 Model choice comes from the frontend (fast | smart).
+Persists conversation history per (repository_id, file_path) in Supabase.
 """
 import httpx  # type: ignore
-from fastapi import APIRouter, HTTPException  # type: ignore
+from fastapi import APIRouter, HTTPException, Depends  # type: ignore
 from pydantic import BaseModel  # type: ignore
 from core.config import NVIDIA_API_KEY, GEMINI_API_KEY  # type: ignore
+from core.auth import get_current_user_id  # type: ignore
+from core.supabase import get_chat_session, upsert_chat_session  # type: ignore
 
 router = APIRouter()
 
@@ -31,18 +34,23 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    messages: list[ChatMessage]          # full conversation history
+    messages: list[ChatMessage]
     file_path: str
     file_code: str
     file_explanation: str
     selected_text: str
-    model_tier: str = "fast"             # "fast" or "smart"
+    model_tier: str = "fast"
     repo_file_tree: list[str] = []
+    repository_id: str
 
 
 class ChatResponse(BaseModel):
     reply: str
     model_used: str
+
+
+class ChatSessionResponse(BaseModel):
+    messages: list[ChatMessage]
 
 
 def _build_system_prompt(req: ChatRequest) -> str:
@@ -51,6 +59,7 @@ def _build_system_prompt(req: ChatRequest) -> str:
         tree_str = "\n".join(req.repo_file_tree[:300])
         file_tree_section = f"\n\nCOMPLETE FILE TREE OF THIS REPOSITORY (all files that exist):\n{tree_str}"
 
+    # We use \x60\x60\x60 to prevent markdown rendering splits
     return f"""You are a senior software engineer helping a developer deeply understand a specific part of a codebase.
 
 IMPORTANT: When asked about what files exist, what folders contain, or which files are in the project — always answer using the COMPLETE FILE TREE provided below. Do not infer file locations from import paths or make assumptions.
@@ -66,15 +75,19 @@ Full file code:
 Explanation of this file already generated:
 {req.file_explanation}
 
-The developer selected this passage to ask about:
-\"\"\"{req.selected_text}\"\"\"
-
 Answer their questions clearly and concisely. Reference the file tree above when asked about project structure. Write in plain markdown."""
 
 
 async def _call_nvidia(system_prompt: str, messages: list[ChatMessage], model: str) -> str:
     payload_messages = [{"role": "system", "content": system_prompt}]
-    payload_messages += [{"role": m.role, "content": m.content} for m in messages]
+    for m in messages:
+        if m.role == "context":
+            payload_messages.append({
+                "role": "user",
+                "content": f"[Focus context selected by developer:\n{m.content}]"
+            })
+        else:
+            payload_messages.append({"role": m.role, "content": m.content})
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         res = await client.post(
@@ -95,11 +108,16 @@ async def _call_nvidia(system_prompt: str, messages: list[ChatMessage], model: s
 
 
 async def _call_gemini(system_prompt: str, messages: list[ChatMessage], model: str) -> str:
-    # Gemini uses a different format — system instruction separate, then contents array
     contents = []
     for m in messages:
-        role = "user" if m.role == "user" else "model"
-        contents.append({"role": role, "parts": [{"text": m.content}]})
+        if m.role == "context":
+            contents.append({
+                "role": "user",
+                "parts": [{"text": f"[Focus context selected by developer:\n{m.content}]"}]
+            })
+        else:
+            role = "user" if m.role == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": m.content}]})
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         res = await client.post(
@@ -117,8 +135,14 @@ async def _call_gemini(system_prompt: str, messages: list[ChatMessage], model: s
         return res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
 
+@router.get("/chat/session", response_model=ChatSessionResponse)
+async def get_session(repository_id: str, file_path: str, user_id: str = Depends(get_current_user_id)):
+    messages = await get_chat_session(user_id, repository_id, file_path)
+    return ChatSessionResponse(messages=messages)
+
+
 @router.post("/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest):
+async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)):
     if not NVIDIA_API_KEY and not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="No AI API keys configured.")
 
@@ -126,18 +150,28 @@ async def chat(payload: ChatRequest):
     models = MODEL_MAP[tier]
     system_prompt = _build_system_prompt(payload)
 
+    reply = None
+    model_used = None
+
     if NVIDIA_API_KEY:
         try:
             reply = await _call_nvidia(system_prompt, payload.messages, models["nvidia"])
-            return ChatResponse(reply=reply, model_used=models["nvidia"])
+            model_used = models["nvidia"]
         except Exception as e:
             print(f"[chat] NVIDIA failed ({e}), falling back to Gemini...")
 
-    if GEMINI_API_KEY:
+    if reply is None and GEMINI_API_KEY:
         try:
             reply = await _call_gemini(system_prompt, payload.messages, models["gemini"])
-            return ChatResponse(reply=reply, model_used=models["gemini"])
+            model_used = models["gemini"]
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Both providers failed: {e}")
 
-    raise HTTPException(status_code=500, detail="No available AI provider.")
+    if reply is None:
+        raise HTTPException(status_code=500, detail="No available AI provider.")
+
+    # Persist the full conversation (including the new assistant reply)
+    updated_messages = [m.model_dump() for m in payload.messages] + [{"role": "assistant", "content": reply}]
+    await upsert_chat_session(user_id, payload.repository_id, payload.file_path, updated_messages)
+
+    return ChatResponse(reply=reply, model_used=model_used)

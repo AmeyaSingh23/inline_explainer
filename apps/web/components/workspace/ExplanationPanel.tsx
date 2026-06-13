@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import { createClient } from "@/lib/supabase/client";
 import { CodeBlock, ExplanationBlock } from "./WorkspaceShell";
 
 interface Props {
@@ -86,7 +87,6 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
         const filePath = block.id;
         setCurrentFile(filePath);
 
-        // reset popup when file changes
         setPopup(null);
         pendingTextRef.current = "";
 
@@ -106,11 +106,12 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
         setExplanation("");
 
         const raw = sessionStorage.getItem(`graph:${owner}/${repo}`);
-        const graph: { nodes: GraphNode[]; edges: GraphEdge[] } = raw
+        const graph: { job_id?: string; nodes: GraphNode[]; edges: GraphEdge[] } = raw
             ? JSON.parse(raw)
             : { nodes: [], edges: [] };
         const nodes = graph.nodes ?? [];
         const edges = graph.edges ?? [];
+        const repositoryId = graph.job_id;
 
         const nodeFileMap = new Map<string, string | undefined>();
         nodes.forEach((n) => nodeFileMap.set(n.id, normalizePath(n.source_file)));
@@ -182,6 +183,11 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
         }
 
         async function run() {
+            if (!repositoryId) {
+                setStatus("error");
+                return;
+            }
+
             const connected_files: ConnectedFile[] = [];
             for (const c of candidates) {
                 const content = await fetchFileContent(c.filePath);
@@ -193,15 +199,26 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                 });
             }
 
+            const supabase = createClient();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                setStatus("error");
+                return;
+            }
+
             const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
             try {
                 const res = await fetch(`${apiUrl}/api/explain`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${session.access_token}`,
+                    },
                     body: JSON.stringify({
                         code: block.code,
                         language: block.language,
                         file_path: filePath,
+                        repository_id: repositoryId,
                         connected_files,
                     }),
                 });
@@ -238,7 +255,6 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
         setPopup(null);
     }
 
-    // Dismiss popup if user clicks elsewhere
     function handleMouseDown() {
         setPopup(null);
     }
@@ -273,7 +289,6 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                 )}
             </div>
 
-            {/* Floating "Ask AI" popup */}
             {popup && (
                 <button
                     onMouseDown={(e) => e.stopPropagation()}
