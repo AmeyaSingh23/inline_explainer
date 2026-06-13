@@ -53,3 +53,37 @@ async def upsert_repository(user_id: str, repo_url: str, repo_name: str, graph_j
         res.raise_for_status()
         rows = res.json()
         return rows[0]
+
+
+async def get_explanation(user_id: str, repository_id: str, file_path: str) -> str | None:
+    """Returns cached explanation text for (repository_id, file_path), or None."""
+    params = {
+        "select": "explanation",
+        "user_id": f"eq.{user_id}",
+        "repository_id": f"eq.{repository_id}",
+        "file_path": f"eq.{file_path}",
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        res = await client.get(f"{REST_URL}/explanations", headers=_HEADERS, params=params)
+        res.raise_for_status()
+        rows = res.json()
+        return rows[0]["explanation"] if rows else None
+
+
+async def upsert_explanation(user_id: str, repository_id: str, file_path: str, explanation: str) -> None:
+    """Inserts or updates the explanation for (repository_id, file_path)."""
+    headers = {**_HEADERS, "Prefer": "resolution=merge-duplicates"}
+    payload = {
+        "user_id": user_id,
+        "repository_id": repository_id,
+        "file_path": file_path,
+        "explanation": explanation,
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        res = await client.post(
+            f"{REST_URL}/explanations",
+            headers=headers,
+            params={"on_conflict": "repository_id,file_path"},
+            json=payload,
+        )
+        res.raise_for_status()
