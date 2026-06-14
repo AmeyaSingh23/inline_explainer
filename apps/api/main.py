@@ -37,7 +37,7 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 ALLOWED_ORIGINS = [
     "http://localhost:3000",        # Next.js dev server
-    "https://inlineexplainer.vercel.app",  # production frontend (update when known)
+    "https://inline-explainer.vercel.app",  # production frontend
 ]
 
 app.add_middleware(
