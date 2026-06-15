@@ -1,11 +1,13 @@
 """
-/api/chat — conversational Deep Dive chat, scoped to a specific file context.
-NVIDIA Llama 70B primary, Gemini 2.5 Flash fallback.
-Model choice comes from the frontend (fast | smart).
-Persists conversation history per (repository_id, file_path) in Supabase.
+/api/chat — conversational Deep Dive. NVIDIA primary, Gemini fallback.
+Persists per (repository_id, file_path) in Supabase.
+Supports "context" role messages (inline code passage anchors).
+Streams response token by token.
 """
+import json
 import httpx  # type: ignore
 from fastapi import APIRouter, HTTPException, Depends  # type: ignore
+from fastapi.responses import StreamingResponse  # type: ignore
 from pydantic import BaseModel  # type: ignore
 from core.config import NVIDIA_API_KEY, GEMINI_API_KEY  # type: ignore
 from core.auth import get_current_user_id  # type: ignore
@@ -17,19 +19,13 @@ NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 MODEL_MAP = {
-    "fast": {
-        "nvidia": "meta/llama-3.1-70b-instruct",
-        "gemini": "gemini-2.5-flash",
-    },
-    "smart": {
-        "nvidia": "meta/llama-3.3-70b-instruct",
-        "gemini": "gemini-2.5-pro",
-    },
+    "fast": {"nvidia": "meta/llama-3.1-70b-instruct", "gemini": "gemini-2.5-flash"},
+    "smart": {"nvidia": "meta/llama-3.3-70b-instruct", "gemini": "gemini-2.5-pro"},
 }
 
 
 class ChatMessage(BaseModel):
-    role: str   # "user" or "assistant"
+    role: str   # "user", "assistant", or "context"
     content: str
 
 
@@ -44,11 +40,6 @@ class ChatRequest(BaseModel):
     repository_id: str
 
 
-class ChatResponse(BaseModel):
-    reply: str
-    model_used: str
-
-
 class ChatSessionResponse(BaseModel):
     messages: list[ChatMessage]
 
@@ -59,7 +50,10 @@ def _build_system_prompt(req: ChatRequest) -> str:
         tree_str = "\n".join(req.repo_file_tree[:300])
         file_tree_section = f"\n\nCOMPLETE FILE TREE OF THIS REPOSITORY (all files that exist):\n{tree_str}"
 
-    # We use \x60\x60\x60 to prevent markdown rendering splits
+    selected_passage_section = ""
+    if req.selected_text.strip():
+        selected_passage_section = f'\n\nThe developer selected this passage to ask about:\n"""{req.selected_text}"""'
+
     return f"""You are a senior software engineer helping a developer deeply understand a specific part of a codebase.
 
 IMPORTANT: When asked about what files exist, what folders contain, or which files are in the project — always answer using the COMPLETE FILE TREE provided below. Do not infer file locations from import paths or make assumptions.
@@ -73,66 +67,83 @@ Full file code:
 \x60\x60\x60
 
 Explanation of this file already generated:
-{req.file_explanation}
+{req.file_explanation}{selected_passage_section}
 
 Answer their questions clearly and concisely. Reference the file tree above when asked about project structure. Write in plain markdown."""
 
 
-async def _call_nvidia(system_prompt: str, messages: list[ChatMessage], model: str) -> str:
+async def _stream_nvidia(system_prompt: str, messages: list[ChatMessage], model: str):
+    """Yields text chunks from NVIDIA NIM streaming API."""
     payload_messages = [{"role": "system", "content": system_prompt}]
     for m in messages:
         if m.role == "context":
-            payload_messages.append({
-                "role": "user",
-                "content": f"[Focus context selected by developer:\n{m.content}]"
-            })
+            payload_messages.append({"role": "user", "content": f"[Focus context selected by developer:\n{m.content}]"})
         else:
             payload_messages.append({"role": m.role, "content": m.content})
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        res = await client.post(
+        async with client.stream(
+            "POST",
             f"{NVIDIA_BASE_URL}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {NVIDIA_API_KEY}",
-                "Content-Type": "application/json",
-            },
+            headers={"Authorization": f"Bearer {NVIDIA_API_KEY}", "Content-Type": "application/json"},
             json={
                 "model": model,
                 "messages": payload_messages,
                 "max_tokens": 2048,
                 "temperature": 0.3,
+                "stream": True,
             },
-        )
-        res.raise_for_status()
-        return res.json()["choices"][0]["message"]["content"].strip()
+        ) as res:
+            res.raise_for_status()
+            async for line in res.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    text = chunk["choices"][0]["delta"].get("content", "")
+                    if text:
+                        yield text
+                except Exception:
+                    continue
 
 
-async def _call_gemini(system_prompt: str, messages: list[ChatMessage], model: str) -> str:
+async def _stream_gemini(system_prompt: str, messages: list[ChatMessage], model: str):
+    """Yields text chunks from Gemini streaming API."""
     contents = []
     for m in messages:
         if m.role == "context":
-            contents.append({
-                "role": "user",
-                "parts": [{"text": f"[Focus context selected by developer:\n{m.content}]"}]
-            })
+            contents.append({"role": "user", "parts": [{"text": f"[Focus context selected by developer:\n{m.content}]"}]})
         else:
             role = "user" if m.role == "user" else "model"
             contents.append({"role": role, "parts": [{"text": m.content}]})
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        res = await client.post(
-            f"{GEMINI_BASE_URL}/{model}:generateContent?key={GEMINI_API_KEY}",
+        async with client.stream(
+            "POST",
+            f"{GEMINI_BASE_URL}/{model}:streamGenerateContent?key={GEMINI_API_KEY}&alt=sse",
             json={
                 "system_instruction": {"parts": [{"text": system_prompt}]},
                 "contents": contents,
-                "generationConfig": {
-                    "maxOutputTokens": 2048,
-                    "temperature": 0.3,
-                },
+                "generationConfig": {"maxOutputTokens": 2048, "temperature": 0.3},
             },
-        )
-        res.raise_for_status()
-        return res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        ) as res:
+            res.raise_for_status()
+            async for line in res.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    text = chunk["candidates"][0]["content"]["parts"][0].get("text", "")
+                    if text:
+                        yield text
+                except Exception:
+                    continue
 
 
 @router.get("/chat/session", response_model=ChatSessionResponse)
@@ -141,7 +152,7 @@ async def get_session(repository_id: str, file_path: str, user_id: str = Depends
     return ChatSessionResponse(messages=messages)
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat")
 async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)):
     if not NVIDIA_API_KEY and not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="No AI API keys configured.")
@@ -150,28 +161,37 @@ async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)
     models = MODEL_MAP[tier]
     system_prompt = _build_system_prompt(payload)
 
-    reply = None
-    model_used = None
+    async def generate():
+        full_text = []
+        provider_worked = False
 
-    if NVIDIA_API_KEY:
-        try:
-            reply = await _call_nvidia(system_prompt, payload.messages, models["nvidia"])
-            model_used = models["nvidia"]
-        except Exception as e:
-            print(f"[chat] NVIDIA failed ({e}), falling back to Gemini...")
+        if NVIDIA_API_KEY:
+            try:
+                async for chunk in _stream_nvidia(system_prompt, payload.messages, models["nvidia"]):
+                    full_text.append(chunk)
+                    yield f"data: {json.dumps({'text': chunk})}\n\n"
+                provider_worked = True
+            except Exception as e:
+                print(f"[chat] NVIDIA streaming failed ({e}), falling back to Gemini...")
+                full_text = []
 
-    if reply is None and GEMINI_API_KEY:
-        try:
-            reply = await _call_gemini(system_prompt, payload.messages, models["gemini"])
-            model_used = models["gemini"]
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Both providers failed: {e}")
+        if not provider_worked and GEMINI_API_KEY:
+            try:
+                async for chunk in _stream_gemini(system_prompt, payload.messages, models["gemini"]):
+                    full_text.append(chunk)
+                    yield f"data: {json.dumps({'text': chunk})}\n\n"
+                provider_worked = True
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-    if reply is None:
-        raise HTTPException(status_code=500, detail="No available AI provider.")
+        if provider_worked and full_text:
+            complete = "".join(full_text)
+            updated_messages = [m.model_dump() for m in payload.messages] + [{"role": "assistant", "content": complete}]
+            try:
+                await upsert_chat_session(user_id, payload.repository_id, payload.file_path, updated_messages)
+            except Exception as e:
+                print(f"[chat] Failed to persist session: {e}")
 
-    # Persist the full conversation (including the new assistant reply)
-    updated_messages = [m.model_dump() for m in payload.messages] + [{"role": "assistant", "content": reply}]
-    await upsert_chat_session(user_id, payload.repository_id, payload.file_path, updated_messages)
+        yield "data: [DONE]\n\n"
 
-    return ChatResponse(reply=reply, model_used=model_used)
+    return StreamingResponse(generate(), media_type="text/event-stream")
