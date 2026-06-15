@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { createClient } from "@/lib/supabase/client";
 import { CodeBlock, ExplanationBlock } from "./WorkspaceShell";
 
 interface Props {
@@ -36,7 +35,7 @@ interface ConnectedFile {
     relation: string;
 }
 
-type CardStatus = "loading" | "done" | "error";
+type CardStatus = "loading" | "streaming" | "done" | "error";
 
 const SNIPPET_WINDOW = 8;
 
@@ -86,10 +85,10 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
         const block = blocks[0];
         const filePath = block.id;
         setCurrentFile(filePath);
-
         setPopup(null);
         pendingTextRef.current = "";
 
+        // Check sessionStorage cache first
         const cacheKey = `explanations:${owner}/${repo}:${filePath}`;
         const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
@@ -105,13 +104,13 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
         setStatus("loading");
         setExplanation("");
 
+        // Build cross-file context from graph
         const raw = sessionStorage.getItem(`graph:${owner}/${repo}`);
-        const graph: { job_id?: string; nodes: GraphNode[]; edges: GraphEdge[] } = raw
+        const graph: { nodes: GraphNode[]; edges: GraphEdge[] } = raw
             ? JSON.parse(raw)
             : { nodes: [], edges: [] };
         const nodes = graph.nodes ?? [];
         const edges = graph.edges ?? [];
-        const repositoryId = graph.job_id;
 
         const nodeFileMap = new Map<string, string | undefined>();
         nodes.forEach((n) => nodeFileMap.set(n.id, normalizePath(n.source_file)));
@@ -183,30 +182,33 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
         }
 
         async function run() {
-            if (!repositoryId) {
-                setStatus("error");
-                return;
-            }
+            // Fetch connected file snippets
+            const results = await Promise.all(
+                candidates.map(async (c) => {
+                    const content = await fetchFileContent(c.filePath);
+                    if (!content) return null;
+                    return {
+                        file_path: c.filePath,
+                        snippet: extractSnippet(content, c.line),
+                        relation: c.relation,
+                    };
+                })
+            );
+            const connected_files: ConnectedFile[] = results.filter((r): r is ConnectedFile => r !== null);
 
-            const connected_files: ConnectedFile[] = [];
-            for (const c of candidates) {
-                const content = await fetchFileContent(c.filePath);
-                if (!content) continue;
-                connected_files.push({
-                    file_path: c.filePath,
-                    snippet: extractSnippet(content, c.line),
-                    relation: c.relation,
-                });
-            }
-
+            // Get auth token
+            const { createClient } = await import("@/lib/supabase/client");
             const supabase = createClient();
             const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
-                setStatus("error");
-                return;
-            }
+            if (!session) { setStatus("error"); return; }
+
+            const repositoryId = (() => {
+                const g = sessionStorage.getItem(`graph:${owner}/${repo}`);
+                return g ? JSON.parse(g).job_id : "";
+            })();
 
             const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
             try {
                 const res = await fetch(`${apiUrl}/api/explain`, {
                     method: "POST",
@@ -222,12 +224,49 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                         connected_files,
                     }),
                 });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                sessionStorage.setItem(cacheKey, data.explanation);
-                setExplanation(data.explanation);
-                setStatus("done");
-                onExplanationsReady([{ blockId: filePath, explanation: data.explanation }]);
+
+                if (!res.ok || !res.body) { setStatus("error"); return; }
+
+                setStatus("streaming");
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let accumulated = "";
+                let buffer = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split("\n");
+                    buffer = lines.pop() ?? "";
+
+                    for (const line of lines) {
+                        if (!line.startsWith("data: ")) continue;
+                        const data = line.slice(6);
+                        if (data === "[DONE]") break;
+                        try {
+                            const parsed = JSON.parse(data);
+                            if (parsed.error) { setStatus("error"); return; }
+                            // Cache hit — backend sends full text in one chunk
+                            if (parsed.cached) continue;
+                            if (parsed.text) {
+                                accumulated += parsed.text;
+                                setExplanation(accumulated);
+                            }
+                        } catch {
+                            continue;
+                        }
+                    }
+                }
+
+                if (accumulated) {
+                    sessionStorage.setItem(cacheKey, accumulated);
+                    setStatus("done");
+                    onExplanationsReady([{ blockId: filePath, explanation: accumulated }]);
+                } else {
+                    setStatus("error");
+                }
             } catch {
                 setStatus("error");
             }
@@ -279,12 +318,15 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                         <p className="text-[var(--error)] text-xs">Failed to load explanation. Try selecting the file again.</p>
                     </div>
                 )}
-                {status === "done" && (
+                {(status === "streaming" || status === "done") && (
                     <div
                         onMouseUp={handleMouseUp}
                         className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4 prose prose-sm max-w-none text-[var(--text-secondary)] text-sm leading-relaxed [&>p]:mb-3 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ul]:pl-4 [&>li]:mb-0.5 [&>code]:font-mono [&>code]:text-xs [&>code]:bg-[var(--bg-elevated)] [&>code]:px-1 [&>code]:rounded"
                     >
                         <ReactMarkdown>{explanation}</ReactMarkdown>
+                        {status === "streaming" && (
+                            <span className="inline-block w-0.5 h-3.5 bg-[var(--text-muted)] ml-0.5 animate-pulse" />
+                        )}
                     </div>
                 )}
             </div>
