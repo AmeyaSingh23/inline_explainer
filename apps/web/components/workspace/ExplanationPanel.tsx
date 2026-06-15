@@ -183,16 +183,18 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
 
         async function run() {
             // Fetch connected file snippets
-            const connected_files: ConnectedFile[] = [];
-            for (const c of candidates) {
-                const content = await fetchFileContent(c.filePath);
-                if (!content) continue;
-                connected_files.push({
-                    file_path: c.filePath,
-                    snippet: extractSnippet(content, c.line),
-                    relation: c.relation,
-                });
-            }
+            const results = await Promise.all(
+                candidates.map(async (c) => {
+                    const content = await fetchFileContent(c.filePath);
+                    if (!content) return null;
+                    return {
+                        file_path: c.filePath,
+                        snippet: extractSnippet(content, c.line),
+                        relation: c.relation,
+                    };
+                })
+            );
+            const connected_files: ConnectedFile[] = results.filter((r): r is ConnectedFile => r !== null);
 
             // Get auth token
             const { createClient } = await import("@/lib/supabase/client");

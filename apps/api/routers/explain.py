@@ -135,7 +135,15 @@ async def explain(payload: ExplainRequest, user_id: str = Depends(get_current_us
             yield f"data: {json.dumps({'cached': True})}\n\n"
             yield f"data: {json.dumps({'text': cached})}\n\n"
             yield "data: [DONE]\n\n"
-        return StreamingResponse(cached_stream(), media_type="text/event-stream")
+        return StreamingResponse(
+            cached_stream(),
+            media_type="text/event-stream",
+            headers={
+                "X-Accel-Buffering": "no",
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+            }
+        )
 
     if not NVIDIA_API_KEY and not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="No AI API keys configured.")
@@ -176,4 +184,12 @@ async def explain(payload: ExplainRequest, user_id: str = Depends(get_current_us
 
         yield "data: [DONE]\n\n"
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+        }
+    )
