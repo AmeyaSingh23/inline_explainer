@@ -5,6 +5,7 @@ import FileTree from "./FileTree";
 import CodePanel from "./CodePanel";
 import ExplanationPanel from "./ExplanationPanel";
 import ChatTray from "./ChatTray";
+import { useChatSession } from "../../hooks/useChatSession";
 import { Panel, Group } from "react-resizable-panels";
 import ResizeHandle from "./ResizeHandle";
 
@@ -28,6 +29,16 @@ export default function WorkspaceShell({ owner, repo }: Props) {
     const [fileExplanation, setFileExplanation] = useState("");
     const [repoFileTree, setRepoFileTree] = useState<string[]>([]);
     const [repositoryId, setRepositoryId] = useState("");
+
+    const chatSession = useChatSession(
+        chatOpen,
+        selectedText,
+        selectedFile ?? "",
+        fileCode,
+        fileExplanation,
+        repoFileTree,
+        repositoryId
+    );
 
     useEffect(() => {
         const raw = sessionStorage.getItem(`graph:${owner}/${repo}`);
@@ -100,14 +111,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                                 <ChatTray
                                     open={chatOpen}
                                     onClose={() => setChatOpen(false)}
-                                    selectedText={selectedText}
-                                    filePath={selectedFile ?? ""}
-                                    fileCode={fileCode}
-                                    fileExplanation={fileExplanation}
-                                    repoFileTree={repoFileTree}
-                                    repositoryId={repositoryId}
-                                    owner={owner}
-                                    repo={repo}
+                                    chatSession={chatSession}
                                 />
                             </Panel>
                         </>
