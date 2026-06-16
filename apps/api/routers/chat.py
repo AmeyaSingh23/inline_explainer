@@ -2,7 +2,7 @@
 /api/chat — conversational Deep Dive. NVIDIA primary, Gemini fallback.
 Persists per (repository_id, file_path) in Supabase.
 Supports "context" role messages (inline code passage anchors).
-Streams response token by token.
+Streams response token by token. Rate limited per-user on every message.
 """
 import json
 import httpx  # type: ignore
@@ -12,6 +12,7 @@ from pydantic import BaseModel  # type: ignore
 from core.config import NVIDIA_API_KEY, GEMINI_API_KEY  # type: ignore
 from core.auth import get_current_user_id  # type: ignore
 from core.supabase import get_chat_session, upsert_chat_session  # type: ignore
+from core.rate_limiter import check_rate_limit  # type: ignore
 
 router = APIRouter()
 
@@ -21,6 +22,12 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 MODEL_MAP = {
     "fast": {"nvidia": "meta/llama-3.1-70b-instruct", "gemini": "gemini-2.5-flash"},
     "smart": {"nvidia": "meta/llama-3.3-70b-instruct", "gemini": "gemini-2.5-pro"},
+}
+
+STREAM_HEADERS = {
+    "X-Accel-Buffering": "no",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
 }
 
 
@@ -154,6 +161,9 @@ async def get_session(repository_id: str, file_path: str, user_id: str = Depends
 
 @router.post("/chat")
 async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)):
+    # No caching on this endpoint — every message is a live LLM call. Check first.
+    check_rate_limit(user_id, "chat")
+
     if not NVIDIA_API_KEY and not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="No AI API keys configured.")
 
@@ -194,12 +204,4 @@ async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)
 
         yield "data: [DONE]\n\n"
 
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "X-Accel-Buffering": "no",
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-        }
-    )
+    return StreamingResponse(generate(), media_type="text/event-stream", headers=STREAM_HEADERS)

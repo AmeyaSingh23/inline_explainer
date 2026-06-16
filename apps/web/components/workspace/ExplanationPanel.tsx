@@ -75,6 +75,7 @@ interface PopupPos { x: number; y: number; }
 export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onExplanationsReady, owner, repo }: Props) {
     const [status, setStatus] = useState<CardStatus>("loading");
     const [explanation, setExplanation] = useState("");
+    const [errorMsg, setErrorMsg] = useState("");
     const [currentFile, setCurrentFile] = useState("");
     const fetchedRef = useRef<string>("");
     const [popup, setPopup] = useState<PopupPos | null>(null);
@@ -103,6 +104,7 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
 
         setStatus("loading");
         setExplanation("");
+        setErrorMsg("");
 
         // Build cross-file context from graph
         const raw = sessionStorage.getItem(`graph:${owner}/${repo}`);
@@ -225,7 +227,26 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                     }),
                 });
 
-                if (!res.ok || !res.body) { setStatus("error"); return; }
+                if (!res.ok) {
+                    let message = "Failed to load explanation. Try selecting the file again.";
+                    if (res.status === 429) {
+                        try {
+                            const errData = await res.json();
+                            message = errData.detail || "Rate limit exceeded. Please wait a moment and try again.";
+                        } catch {
+                            message = "Rate limit exceeded. Please wait a moment and try again.";
+                        }
+                    }
+                    setErrorMsg(message);
+                    setStatus("error");
+                    return;
+                }
+
+                if (!res.body) {
+                    setErrorMsg("Failed to load explanation. Try selecting the file again.");
+                    setStatus("error");
+                    return;
+                }
 
                 setStatus("streaming");
                 const reader = res.body.getReader();
@@ -255,7 +276,8 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                                 setExplanation(accumulated);
                             }
                         } catch {
-                            continue;
+                            setErrorMsg("Failed to load explanation. Try selecting the file again.");
+                            setStatus("error");
                         }
                     }
                 }
@@ -268,6 +290,7 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                     setStatus("error");
                 }
             } catch {
+                setErrorMsg("Failed to load explanation. Try selecting the file again.");
                 setStatus("error");
             }
         }
@@ -315,7 +338,7 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                 {status === "loading" && <SkeletonCard />}
                 {status === "error" && (
                     <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4">
-                        <p className="text-[var(--error)] text-xs">Failed to load explanation. Try selecting the file again.</p>
+                        <p className="text-[var(--error)] text-xs">{errorMsg || "Failed to load explanation. Try selecting the file again."}</p>
                     </div>
                 )}
                 {(status === "streaming" || status === "done") && (

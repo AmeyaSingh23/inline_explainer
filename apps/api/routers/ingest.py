@@ -1,25 +1,21 @@
 """
-/api/ingest  — accepts a public repo URL and kicks off AST processing.
-Checks Supabase for a cached graph first; only clones+extracts on cache miss.
+/api/ingest — accepts a public repo URL, checks Supabase cache first.
+Rate limited per-user on real cache misses only.
 """
-
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Depends # type: ignore
-from pydantic import BaseModel, field_validator # type: ignore
+from fastapi import APIRouter, HTTPException, Depends  # type: ignore
+from pydantic import BaseModel, field_validator  # type: ignore
 
 from services.repo_service import (  # type: ignore
-    process_repo,
-    CloneError,
-    RepoTooLargeError,
-    LFSDetectedError,
+    process_repo, CloneError, RepoTooLargeError, LFSDetectedError,
 )
 from core.auth import get_current_user_id  # type: ignore
 from core.supabase import get_repository, upsert_repository  # type: ignore
+from core.rate_limiter import check_rate_limit  # type: ignore
 
 router = APIRouter()
-
 ALLOWED_HOSTS = {"github.com", "gitlab.com", "bitbucket.org"}
 
 
@@ -33,9 +29,7 @@ class IngestRequest(BaseModel):
         parsed = urlparse(v)
         host = parsed.netloc.lower().removeprefix("www.")
         if host not in ALLOWED_HOSTS:
-            raise ValueError(
-                f"Unsupported host '{host}'. Must be one of: {', '.join(ALLOWED_HOSTS)}"
-            )
+            raise ValueError(f"Unsupported host '{host}'.")
         return v
 
 
@@ -57,7 +51,6 @@ def _repo_name_from_url(repo_url: str) -> str:
 
 @router.post("/ingest", response_model=IngestResponse)
 async def ingest(payload: IngestRequest, user_id: str = Depends(get_current_user_id)):
-    # 1. Check Supabase for an existing graph for this user+repo
     existing = await get_repository(user_id, payload.repo_url)
     if existing and existing.get("graph_json"):
         graph = existing["graph_json"]
@@ -74,7 +67,9 @@ async def ingest(payload: IngestRequest, user_id: str = Depends(get_current_user
             cached=True,
         )
 
-    # 2. Cache miss — clone + AST extract
+    # Real cache miss — about to clone + run AST extraction. Enforce limit here.
+    check_rate_limit(user_id, "ingest")
+
     job_id = str(uuid.uuid4())
     try:
         result = process_repo(repo_url=payload.repo_url, job_id=job_id)
@@ -89,7 +84,6 @@ async def ingest(payload: IngestRequest, user_id: str = Depends(get_current_user
     nodes = graph.get("nodes", [])
     edges = graph.get("edges", [])
 
-    # 3. Store in Supabase for next time
     repo_row = await upsert_repository(
         user_id=user_id,
         repo_url=payload.repo_url,
