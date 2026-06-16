@@ -33,6 +33,7 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    const [errorBanner, setErrorBanner] = useState("");
     const [modelTier, setModelTier] = useState<ModelTier>("fast");
     const [modelUsed, setModelUsed] = useState("");
     const [showModelMenu, setShowModelMenu] = useState(false);
@@ -49,6 +50,7 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
 
         setMessages([]);
         setInput("");
+        setErrorBanner("");
         setModelUsed("");
         setLoadingSession(true);
 
@@ -107,6 +109,7 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
         setInput("");
         setLoading(true);
         setModelUsed("");
+        setErrorBanner("");
 
         // Add empty assistant message to stream into
         setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
@@ -135,7 +138,20 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
                 }),
             });
 
-            if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+            if (!res.ok) {
+                let errorMsg = "Something went wrong. Please try again.";
+                if (res.status === 429) {
+                    try {
+                        const errData = await res.json();
+                        errorMsg = errData.detail || "Rate limit exceeded. Please wait a moment and try again.";
+                    } catch {
+                        errorMsg = "Rate limit exceeded. Please wait a moment and try again.";
+                    }
+                }
+                throw new Error(errorMsg);
+            }
+
+            if (!res.body) throw new Error("Something went wrong. Please try again");
 
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
@@ -176,12 +192,13 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
             // Set model label — backend doesn't stream model_used, infer from tier
             setModelUsed(modelTier === "fast" ? "gemini-2.5-flash" : "gemini-2.5-pro");
 
-        } catch {
-            setMessages((prev) => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: "assistant", content: "Something went wrong. Please try again." };
-                return updated;
-            });
+        } catch (err: any) {
+            // revert chat history to what it was before sending
+            setMessages(messages);
+            // put the user's text back into the input box
+            setInput(userContent);
+            //show the dismissible error banner
+            setErrorBanner(err.message || "Something went wrong. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -290,7 +307,17 @@ export default function ChatTray({ open, onClose, selectedText, filePath, fileCo
             )}
 
             {/* Input */}
-            <div className="px-4 py-3 border-t border-[var(--border)] shrink-0">
+            <div className="px-4 py-3 border-t border-[var(--border)] shrink-0 flex flex-col gap-2">
+                {errorBanner && (
+                    <div className="flex items-start justify-between bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--error)] text-xs px-3 py-2 rounded-lg gap-2">
+                        <span>{errorBanner}</span>
+                        <button onClick={() => setErrorBanner("")} className="shrink-0 pt-0.5 hover:opacity-70 transition-opacity">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </button>
+                    </div>
+                )}
                 <div className="flex items-end gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 focus-within:border-[var(--text-muted)] transition-colors">
                     <textarea
                         ref={inputRef}

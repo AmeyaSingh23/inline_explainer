@@ -1,6 +1,7 @@
 """
 /api/explain — NVIDIA Llama 70B primary, Gemini 2.5 Flash fallback.
 Cached in Supabase explanations table. Streams response token by token.
+Rate limited per-user on real cache misses only.
 """
 import json
 import httpx  # type: ignore
@@ -10,6 +11,7 @@ from pydantic import BaseModel  # type: ignore
 from core.config import NVIDIA_API_KEY, GEMINI_API_KEY  # type: ignore
 from core.auth import get_current_user_id  # type: ignore
 from core.supabase import get_explanation, upsert_explanation  # type: ignore
+from core.rate_limiter import check_rate_limit  # type: ignore
 
 router = APIRouter()
 
@@ -22,6 +24,12 @@ RELATION_LABELS = {
     "calls": "Calls into",
     "called_by": "Called by",
     "imports": "Imports",
+}
+
+STREAM_HEADERS = {
+    "X-Accel-Buffering": "no",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
 }
 
 
@@ -127,23 +135,18 @@ async def _stream_gemini(prompt: str):
 
 @router.post("/explain")
 async def explain(payload: ExplainRequest, user_id: str = Depends(get_current_user_id)):
-    # Check Supabase cache first — if cached, stream it instantly as a single chunk
+    # Check Supabase cache first — if cached, stream it instantly as a single chunk.
+    # Cache hits do NOT count against the rate limit.
     cached = await get_explanation(user_id, payload.repository_id, payload.file_path)
     if cached:
         async def cached_stream():
-            # Send cached flag so frontend knows, then the content
             yield f"data: {json.dumps({'cached': True})}\n\n"
             yield f"data: {json.dumps({'text': cached})}\n\n"
             yield "data: [DONE]\n\n"
-        return StreamingResponse(
-            cached_stream(),
-            media_type="text/event-stream",
-            headers={
-                "X-Accel-Buffering": "no",
-                "Cache-Control": "no-cache, no-transform",
-                "Connection": "keep-alive",
-            }
-        )
+        return StreamingResponse(cached_stream(), media_type="text/event-stream", headers=STREAM_HEADERS)
+
+    # Real cache miss — about to call an LLM. Enforce limit here.
+    check_rate_limit(user_id, "explain")
 
     if not NVIDIA_API_KEY and not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="No AI API keys configured.")
@@ -154,7 +157,6 @@ async def explain(payload: ExplainRequest, user_id: str = Depends(get_current_us
         full_text = []
         provider_worked = False
 
-        # Try NVIDIA first
         if NVIDIA_API_KEY:
             try:
                 async for chunk in _stream_nvidia(prompt):
@@ -163,9 +165,8 @@ async def explain(payload: ExplainRequest, user_id: str = Depends(get_current_us
                 provider_worked = True
             except Exception as e:
                 print(f"[explain] NVIDIA streaming failed ({e}), falling back to Gemini...")
-                full_text = []  # reset — don't cache partial output
+                full_text = []
 
-        # Fallback to Gemini
         if not provider_worked and GEMINI_API_KEY:
             try:
                 async for chunk in _stream_gemini(prompt):
@@ -184,12 +185,4 @@ async def explain(payload: ExplainRequest, user_id: str = Depends(get_current_us
 
         yield "data: [DONE]\n\n"
 
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "X-Accel-Buffering": "no",
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-        }
-    )
+    return StreamingResponse(generate(), media_type="text/event-stream", headers=STREAM_HEADERS)
