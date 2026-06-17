@@ -82,6 +82,14 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
     const pendingTextRef = useRef<string>("");
 
     useEffect(() => {
+        // Race-condition guard: this flag is flipped false in the cleanup function
+        // below whenever `blocks` changes again (i.e. the user switched files) or
+        // the component unmounts. Every state-mutating call inside this effect's
+        // async chain checks `active` first, so a slow/stale fetch from a
+        // previously-selected file can never overwrite the UI for a newer one.
+        let active = true;
+        const controller = new AbortController();
+
         if (blocks.length === 0) return;
         const block = blocks[0];
         const filePath = block.id;
@@ -93,13 +101,15 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
         const cacheKey = `explanations:${owner}/${repo}:${filePath}`;
         const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
-            setExplanation(cached);
-            setStatus("done");
-            onExplanationsReady([{ blockId: filePath, explanation: cached }]);
-            return;
+            if (active) {
+                setExplanation(cached);
+                setStatus("done");
+                onExplanationsReady([{ blockId: filePath, explanation: cached }]);
+            }
+            return () => { active = false; };
         }
 
-        if (fetchedRef.current === filePath) return;
+        if (fetchedRef.current === filePath) return () => { active = false; };
         fetchedRef.current = filePath;
 
         setStatus("loading");
@@ -171,7 +181,10 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
             try {
                 const res = await fetch(
                     `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
-                    { headers: { Authorization: `Bearer ${process.env.NEXT_PUBLIC_GITHUB_TOKEN}` } }
+                    {
+                        headers: { Authorization: `Bearer ${process.env.NEXT_PUBLIC_GITHUB_TOKEN}` },
+                        signal: controller.signal,
+                    }
                 );
                 if (!res.ok) return null;
                 const data = await res.json();
@@ -196,12 +209,14 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                     };
                 })
             );
+            if (!active) return;
             const connected_files: ConnectedFile[] = results.filter((r): r is ConnectedFile => r !== null);
 
             // Get auth token
             const { createClient } = await import("@/lib/supabase/client");
             const supabase = createClient();
             const { data: { session } } = await supabase.auth.getSession();
+            if (!active) return;
             if (!session) { setStatus("error"); return; }
 
             const repositoryId = (() => {
@@ -218,6 +233,7 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                         "Content-Type": "application/json",
                         "Authorization": `Bearer ${session.access_token}`,
                     },
+                    signal: controller.signal,
                     body: JSON.stringify({
                         code: block.code,
                         language: block.language,
@@ -226,6 +242,8 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                         connected_files,
                     }),
                 });
+
+                if (!active) return;
 
                 if (!res.ok) {
                     let message = "Failed to load explanation. Try selecting the file again.";
@@ -237,18 +255,22 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                             message = "Rate limit exceeded. Please wait a moment and try again.";
                         }
                     }
-                    setErrorMsg(message);
-                    setStatus("error");
+                    if (active) {
+                        setErrorMsg(message);
+                        setStatus("error");
+                    }
                     return;
                 }
 
                 if (!res.body) {
-                    setErrorMsg("Failed to load explanation. Try selecting the file again.");
-                    setStatus("error");
+                    if (active) {
+                        setErrorMsg("Failed to load explanation. Try selecting the file again.");
+                        setStatus("error");
+                    }
                     return;
                 }
 
-                setStatus("streaming");
+                if (active) setStatus("streaming");
                 const reader = res.body.getReader();
                 const decoder = new TextDecoder();
                 let accumulated = "";
@@ -257,6 +279,12 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
+
+                    if (!active) {
+                        // File changed mid-stream — reader was already cancelled by
+                        // the AbortController in the cleanup function below.
+                        return;
+                    }
 
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split("\n");
@@ -268,19 +296,23 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                         if (data === "[DONE]") break;
                         try {
                             const parsed = JSON.parse(data);
-                            if (parsed.error) { setStatus("error"); return; }
+                            if (parsed.error) { if (active) setStatus("error"); return; }
                             // Cache hit — backend sends full text in one chunk
                             if (parsed.cached) continue;
                             if (parsed.text) {
                                 accumulated += parsed.text;
-                                setExplanation(accumulated);
+                                if (active) setExplanation(accumulated);
                             }
                         } catch {
-                            setErrorMsg("Failed to load explanation. Try selecting the file again.");
-                            setStatus("error");
+                            if (active) {
+                                setErrorMsg("Failed to load explanation. Try selecting the file again.");
+                                setStatus("error");
+                            }
                         }
                     }
                 }
+
+                if (!active) return;
 
                 if (accumulated) {
                     sessionStorage.setItem(cacheKey, accumulated);
@@ -290,12 +322,19 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
                     setStatus("error");
                 }
             } catch {
-                setErrorMsg("Failed to load explanation. Try selecting the file again.");
-                setStatus("error");
+                if (active) {
+                    setErrorMsg("Failed to load explanation. Try selecting the file again.");
+                    setStatus("error");
+                }
             }
         }
 
         run();
+
+        return () => {
+            active = false;
+            controller.abort();
+        };
     }, [blocks]);
 
     function handleMouseUp(e: React.MouseEvent) {
