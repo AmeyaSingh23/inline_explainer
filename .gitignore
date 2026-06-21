@@ -11,7 +11,7 @@ dist/
 build/
 *.egg-info/
 
-# Environment files — never commit these
+# Environment files
 .env
 .env.local
 .env.production
@@ -31,5 +31,5 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 
-# Repo processing temp files (our backend will clone repos here temporarily)
+# Repo processing temp files (backend will clone repos here temporarily)
 apps/api/temp_repos/
