@@ -2,11 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-
-export interface Message {
-    role: "user" | "assistant" | "context";
-    content: string;
-}
+import { ChatMessage } from "@/types";
 
 export type ModelTier = "fast" | "smart";
 
@@ -19,7 +15,7 @@ export function useChatSession(
     repoFileTree: string[],
     repositoryId: string
 ) {
-    const [messages, setMessages] = useState<Message[]>([]);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [errorBanner, setErrorBanner] = useState("");
@@ -54,7 +50,7 @@ export function useChatSession(
                 if (!res.ok) return;
                 const data = await res.json();
 
-                let history: Message[] = data.messages || [];
+                let history: ChatMessage[] = data.messages || [];
                 if (selectedText) {
                     const lastMsg = history[history.length - 1];
                     if (!lastMsg || lastMsg.role !== "context" || lastMsg.content !== selectedText) {
@@ -85,7 +81,7 @@ export function useChatSession(
     async function sendMessage(userContent: string) {
         if (!userContent.trim() || loading) return;
 
-        const newMessages: Message[] = [...messages, { role: "user", content: userContent }];
+        const newMessages: ChatMessage[] = [...messages, { role: "user", content: userContent }];
         setMessages(newMessages);
         setInput("");
         setLoading(true);

@@ -20,7 +20,7 @@ export interface ChatSession {
 }
 
 export interface ChatMessage {
-    role: "user" | "assistant";
+    role: "user" | "assistant" | "context";
     content: string;
-    timestamp: string;
+    timestamp?: string;
 }
