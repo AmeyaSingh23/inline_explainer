@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import FileTree from "./FileTree";
 import CodePanel from "./CodePanel";
 import ExplanationPanel from "./ExplanationPanel";
 import ChatTray from "./ChatTray";
 import { useChatSession } from "../../hooks/useChatSession";
-import { Panel, Group } from "react-resizable-panels";
+import { Panel, Group, PanelImperativeHandle, GroupImperativeHandle } from "react-resizable-panels";
 import ResizeHandle from "./ResizeHandle";
 
 interface Props { owner: string; repo: string; }
@@ -21,6 +21,9 @@ export interface ExplanationBlock {
 export default function WorkspaceShell({ owner, repo }: Props) {
     const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
     const [chatOpen, setChatOpen] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const sidebarRef = useRef<PanelImperativeHandle>(null);
+    const groupRef = useRef<GroupImperativeHandle>(null);
     const [selectedText, setSelectedText] = useState("");
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [blocks, setBlocks] = useState<CodeBlock[]>([]);
@@ -50,7 +53,6 @@ export default function WorkspaceShell({ owner, repo }: Props) {
 
     function handleTextSelect(text: string) {
         setSelectedText(text);
-        // Don't open chat here — popup button in ExplanationPanel does that
     }
 
     function handleOpenChat(text: string) {
@@ -58,15 +60,100 @@ export default function WorkspaceShell({ owner, repo }: Props) {
         setChatOpen(true);
     }
 
+    function handleToggleSidebar() {
+        const sidebar = sidebarRef.current;
+        const group = groupRef.current;
+        if (sidebar && group) {
+            const currentLayout = group.getLayout();
+            const keys = Object.keys(currentLayout);
+            
+            const sidebarKey = keys.find(k => k.includes("sidebar")) || "sidebar-panel";
+            const codeKey = keys.find(k => k.includes("code")) || "code-panel";
+            const expKey = keys.find(k => k.includes("explanation")) || "explanation-panel";
+            
+            if (sidebar.isCollapsed()) {
+                const codeSize = currentLayout[codeKey] ?? 42;
+                const expSize = currentLayout[expKey] ?? 43;
+                const totalCodeExp = codeSize + expSize;
+                
+                const newLayout = { ...currentLayout };
+                newLayout[sidebarKey] = 15;
+                if (totalCodeExp > 0) {
+                    newLayout[codeKey] = Math.max(20, codeSize - 7.5);
+                    newLayout[expKey] = Math.max(15, expSize - 7.5);
+                } else {
+                    newLayout[codeKey] = 42;
+                    newLayout[expKey] = 43;
+                }
+                group.setLayout(newLayout);
+                setSidebarOpen(true);
+            } else {
+                const sidebarSize = currentLayout[sidebarKey] ?? 15;
+                const codeSize = currentLayout[codeKey] ?? 42;
+                const expSize = currentLayout[expKey] ?? 43;
+                
+                const newLayout = { ...currentLayout };
+                newLayout[sidebarKey] = 0;
+                newLayout[codeKey] = codeSize + (sidebarSize / 2);
+                newLayout[expKey] = expSize + (sidebarSize / 2);
+                
+                group.setLayout(newLayout);
+                setSidebarOpen(false);
+            }
+        }
+    }
+
+    // When sidebar closes, reclaim its space equally between the two main panels.
+    // react-resizable-panels handles proportional sizing automatically when a
+    // collapsible panel collapses — we just need collapsible + collapsedSize.
+
     return (
         <div className="h-screen w-screen flex flex-col bg-[var(--bg-base)] overflow-hidden">
             <header className="h-12 flex items-center px-4 border-b border-[var(--border)] shrink-0 gap-4">
                 <span className="text-[var(--text-primary)] font-semibold text-sm">InlineExplainer</span>
                 <span className="text-[var(--text-muted)] text-sm">{owner}/{repo}</span>
             </header>
+ 
             <div className="flex flex-1 overflow-hidden">
-                <Group orientation="horizontal">
-                    <Panel defaultSize={15} minSize={10}>
+                {/* Icon strip — always visible, never collapses */}
+                <div className="flex flex-col items-center w-10 shrink-0 border-r border-[var(--border)] bg-[var(--bg-surface)] py-2 gap-2">
+                    {/* Toggle button */}
+                    <button
+                        onClick={handleToggleSidebar}
+                        title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+                        className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors"
+                    >
+                        <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className={`transition-transform duration-200 ${sidebarOpen ? "" : "rotate-180"}`}
+                        >
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                    </button>
+                    {/* Placeholder for future profile/nav icons */}
+                </div>
+ 
+                <Group orientation="horizontal" className="flex-1" groupRef={groupRef}>
+                    <Panel
+                        defaultSize={15}
+                        minSize={10}
+                        collapsible
+                        collapsedSize={0}
+                        onResize={(size) => {
+                            if (size.asPercentage === 0) setSidebarOpen(false);
+                            else setSidebarOpen(true);
+                        }}
+                        id="sidebar-panel"
+                        panelRef={sidebarRef}
+                        style={{ overflow: "hidden" }}
+                    >
                         <FileTree
                             owner={owner}
                             repo={repo}
@@ -75,8 +162,10 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                             onTreeReady={setRepoFileTree}
                         />
                     </Panel>
-                    <ResizeHandle />
-                    <Panel defaultSize={chatOpen ? 35 : 42} minSize={20}>
+                    
+                    <ResizeHandle disabled={!sidebarOpen} />
+
+                    <Panel defaultSize={chatOpen ? 42 : 42} minSize={20} id="code-panel">
                         <CodePanel
                             owner={owner}
                             repo={repo}
@@ -87,8 +176,10 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                             onFileCodeReady={setFileCode}
                         />
                     </Panel>
+
                     <ResizeHandle />
-                    <Panel defaultSize={chatOpen ? 25 : 43} minSize={15}>
+
+                    <Panel defaultSize={chatOpen ? 43 : 43} minSize={15} id="explanation-panel">
                         <ExplanationPanel
                             blocks={blocks}
                             explanations={explanations}
@@ -104,10 +195,11 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                             repo={repo}
                         />
                     </Panel>
+
                     {chatOpen && (
                         <>
                             <ResizeHandle />
-                            <Panel defaultSize={25} minSize={15}>
+                            <Panel defaultSize={25} minSize={15} id="chat-panel">
                                 <ChatTray
                                     open={chatOpen}
                                     onClose={() => setChatOpen(false)}
