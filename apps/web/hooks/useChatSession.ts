@@ -22,11 +22,12 @@ export function useChatSession(
     const [modelTier, setModelTier] = useState<ModelTier>("fast");
     const [modelUsed, setModelUsed] = useState("");
     const [loadingSession, setLoadingSession] = useState(false);
-    const loadedFileRef = useRef<string>("");
+    const [pendingContext, setPendingContext] = useState<string | null>(null);
+    const loadedFileRef = useRef<string | null>(null);
 
-    // Load chat history when file changes
+    // Load chat history when file changes (filePath="" is valid for repo-level chat)
     useEffect(() => {
-        if (!open || !filePath || !repositoryId) return;
+        if (!open || !repositoryId) return;
         if (loadedFileRef.current === filePath) return;
         loadedFileRef.current = filePath;
 
@@ -34,6 +35,7 @@ export function useChatSession(
         setInput("");
         setErrorBanner("");
         setModelUsed("");
+        setPendingContext(null);
         setLoadingSession(true);
 
         async function loadSession() {
@@ -50,18 +52,10 @@ export function useChatSession(
                 if (!res.ok) return;
                 const data = await res.json();
 
-                let history: ChatMessage[] = data.messages || [];
-                if (selectedText) {
-                    const lastMsg = history[history.length - 1];
-                    if (!lastMsg || lastMsg.role !== "context" || lastMsg.content !== selectedText) {
-                        history = [...history, { role: "context", content: selectedText }];
-                    }
-                }
+                const history: ChatMessage[] = data.messages || [];
                 setMessages(history);
             } catch {
-                if (selectedText) {
-                    setMessages([{ role: "context", content: selectedText }]);
-                }
+                // No saved session — start fresh
             } finally {
                 setLoadingSession(false);
             }
@@ -70,19 +64,25 @@ export function useChatSession(
         loadSession();
     }, [open, filePath, repositoryId]);
 
-    // Append new context card when selectedText changes while tray is open
+    // Set pending context when selectedText changes (don't append to messages yet)
     useEffect(() => {
         if (!open || !selectedText || loadingSession) return;
-        const lastMsg = messages[messages.length - 1];
-        if (lastMsg && lastMsg.role === "context" && lastMsg.content === selectedText) return;
-        setMessages((prev) => [...prev, { role: "context", content: selectedText }]);
+        setPendingContext(selectedText);
     }, [selectedText, open, loadingSession]);
 
     async function sendMessage(userContent: string) {
         if (!userContent.trim() || loading) return;
 
-        const newMessages: ChatMessage[] = [...messages, { role: "user", content: userContent }];
+        // Build message list: append pending context (if any) + user message
+        const toAppend: ChatMessage[] = [];
+        if (pendingContext) {
+            toAppend.push({ role: "context", content: pendingContext });
+        }
+        toAppend.push({ role: "user", content: userContent });
+
+        const newMessages: ChatMessage[] = [...messages, ...toAppend];
         setMessages(newMessages);
+        setPendingContext(null);  // clear after committing
         setInput("");
         setLoading(true);
         setModelUsed("");
@@ -189,6 +189,8 @@ export function useChatSession(
         setModelTier,
         modelUsed,
         loadingSession,
+        pendingContext,
+        setPendingContext,
         sendMessage,
     };
 }

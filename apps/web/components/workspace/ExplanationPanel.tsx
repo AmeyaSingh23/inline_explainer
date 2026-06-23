@@ -8,8 +8,8 @@ interface Props {
     explanations: ExplanationBlock[];
     activeBlockId: string | null;
     onBlockHover: (id: string) => void;
-    onTextSelect: (text: string) => void;
     onOpenChat: (text: string) => void;
+    onOpenFileChat: () => void;
     onExplanationsReady: (explanations: ExplanationBlock[]) => void;
     owner: string;
     repo: string;
@@ -72,7 +72,7 @@ function SkeletonCard() {
 
 interface PopupPos { x: number; y: number; }
 
-export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onExplanationsReady, owner, repo }: Props) {
+export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, onExplanationsReady, owner, repo }: Props) {
     const [status, setStatus] = useState<CardStatus>("loading");
     const [explanation, setExplanation] = useState("");
     const [errorMsg, setErrorMsg] = useState("");
@@ -341,7 +341,6 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
         const selection = window.getSelection()?.toString().trim();
         if (selection && selection.length > 0) {
             pendingTextRef.current = selection;
-            onTextSelect(selection);
             setPopup({ x: e.clientX, y: e.clientY });
         } else {
             setPopup(null);
@@ -370,8 +369,17 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onE
 
     return (
         <div className="h-full flex flex-col overflow-hidden relative" onMouseDown={handleMouseDown}>
-            <div className="shrink-0 px-4 py-2.5 border-b border-[var(--border)] bg-[var(--bg-base)]">
+            <div className="shrink-0 px-4 py-2.5 border-b border-[var(--border)] bg-[var(--bg-base)] flex items-center justify-between gap-2">
                 <p className="text-xs font-mono text-[var(--text-muted)] truncate">📄 {currentFile}</p>
+                <button
+                    onClick={onOpenFileChat}
+                    title="Deep Dive (File Chat)"
+                    className="shrink-0 p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors"
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                </button>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-3">
                 {status === "loading" && <SkeletonCard />}

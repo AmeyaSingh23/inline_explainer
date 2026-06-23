@@ -1,13 +1,20 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useLayoutEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { ModelTier, ChatSession } from "../../hooks/useChatSession";
+import { ChatTab } from "./WorkspaceShell";
+
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 interface Props {
     open: boolean;
     onClose: () => void;
-    chatSession: ChatSession;
+    repoChatSession: ChatSession;
+    fileChatSession: ChatSession;
+    activeTab: ChatTab;
+    onTabChange: (tab: ChatTab) => void;
+    selectedFileName: string | null;
 }
 
 const MODEL_LABELS: Record<ModelTier, { label: string; sublabel: string }> = {
@@ -15,7 +22,8 @@ const MODEL_LABELS: Record<ModelTier, { label: string; sublabel: string }> = {
     smart: { label: "Smart", sublabel: "Llama 70B+ / Pro" },
 };
 
-export default function ChatTray({ open, onClose, chatSession }: Props) {
+export default function ChatTray({ open, onClose, repoChatSession, fileChatSession, activeTab, onTabChange, selectedFileName }: Props) {
+    const chatSession = activeTab === "file" && selectedFileName ? fileChatSession : repoChatSession;
     const {
         messages,
         input,
@@ -27,6 +35,8 @@ export default function ChatTray({ open, onClose, chatSession }: Props) {
         setModelTier,
         modelUsed,
         loadingSession,
+        pendingContext,
+        setPendingContext,
         sendMessage,
     } = chatSession;
 
@@ -34,9 +44,33 @@ export default function ChatTray({ open, onClose, chatSession }: Props) {
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages, loading]);
+    const prevTabRef = useRef(activeTab);
+    const prevOpenRef = useRef(open);
+    const prevLoadingSessionRef = useRef(loadingSession);
+    const isMountedRef = useRef(false);
+
+    useIsomorphicLayoutEffect(() => {
+        if (!isMountedRef.current) {
+            isMountedRef.current = true;
+            if (open && !loadingSession) {
+                bottomRef.current?.scrollIntoView({ behavior: "auto" });
+            }
+            return;
+        }
+
+        const tabChanged = prevTabRef.current !== activeTab;
+        const openChanged = !prevOpenRef.current && open;
+        const sessionLoaded = prevLoadingSessionRef.current && !loadingSession;
+
+        prevTabRef.current = activeTab;
+        prevOpenRef.current = open;
+        prevLoadingSessionRef.current = loadingSession;
+
+        if (open && !loadingSession) {
+            const behavior = (tabChanged || openChanged || sessionLoaded) ? "auto" : "smooth";
+            bottomRef.current?.scrollIntoView({ behavior });
+        }
+    }, [messages, loading, activeTab, open, loadingSession]);
 
     useEffect(() => {
         if (!loadingSession && open) {
@@ -52,6 +86,9 @@ export default function ChatTray({ open, onClose, chatSession }: Props) {
     }
 
     if (!open) return null;
+
+    const showTabs = !!selectedFileName;
+    const displayFileName = selectedFileName?.split("/").pop() || selectedFileName;
 
     return (
         <div className="h-full w-full bg-[var(--bg-surface)] flex flex-col border-l border-[var(--border)] min-w-0">
@@ -95,6 +132,38 @@ export default function ChatTray({ open, onClose, chatSession }: Props) {
                 </div>
             </div>
 
+            {/* Tabs — only shown when a file is selected */}
+            {showTabs && (
+                <div className="flex shrink-0 border-b border-[var(--border)] bg-[var(--bg-base)]">
+                    <button
+                        onClick={() => onTabChange("repo")}
+                        className={`flex-1 px-3 py-2 text-xs font-medium transition-colors relative ${
+                            activeTab === "repo"
+                                ? "text-[var(--text-primary)]"
+                                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                        }`}
+                    >
+                        Repository
+                        {activeTab === "repo" && (
+                            <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-[var(--accent)] rounded-full" />
+                        )}
+                    </button>
+                    <button
+                        onClick={() => onTabChange("file")}
+                        className={`flex-1 px-3 py-2 text-xs font-medium transition-colors relative truncate ${
+                            activeTab === "file"
+                                ? "text-[var(--text-primary)]"
+                                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                        }`}
+                    >
+                        <span className="truncate">{displayFileName}</span>
+                        {activeTab === "file" && (
+                            <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-[var(--accent)] rounded-full" />
+                        )}
+                    </button>
+                </div>
+            )}
+
             {/* Messages */}
             <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 flex flex-col gap-3 min-w-0">
                 {loadingSession && (
@@ -104,7 +173,9 @@ export default function ChatTray({ open, onClose, chatSession }: Props) {
                 )}
                 {!loadingSession && messages.length === 0 && (
                     <div className="flex-1 flex items-center justify-center text-[var(--text-muted)] text-xs text-center px-4">
-                        Ask anything about the selected passage or this file.
+                        {activeTab === "repo"
+                            ? "Ask anything about the repository structure and architecture."
+                            : "Ask anything about the selected passage or this file."}
                     </div>
                 )}
                 {messages.map((msg, i) => (
@@ -156,6 +227,32 @@ export default function ChatTray({ open, onClose, chatSession }: Props) {
                                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                             </svg>
                         </button>
+                    </div>
+                )}
+                {/* Pending context attachment */}
+                {pendingContext && (
+                    <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-[9px] text-[var(--text-muted)] font-mono uppercase tracking-wider">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                </svg>
+                                Code context attached
+                            </div>
+                            <button
+                                onClick={() => setPendingContext(null)}
+                                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                                title="Remove context"
+                            >
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="font-mono text-[10px] text-[var(--text-secondary)] overflow-x-auto whitespace-pre leading-relaxed max-h-20 overflow-y-auto">
+                            {pendingContext}
+                        </div>
                     </div>
                 )}
                 <div className="flex items-end gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 focus-within:border-[var(--text-muted)] transition-colors">
