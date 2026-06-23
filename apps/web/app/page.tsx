@@ -65,7 +65,30 @@ export default function LandingPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg-base)] px-4 py-12">
+    <main className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg-base)] px-4 py-12 relative">
+      {/* Profile Navigation */}
+      <div className="fixed top-3 right-[60px] z-50">
+        <Link
+          href="/profile"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors text-xs font-medium"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+          </svg>
+          Profile
+        </Link>
+      </div>
+
       <div className="w-full max-w-2xl flex flex-col gap-8 flex-1 items-center justify-center">
         <div className="w-full flex flex-col gap-8">
           <div className="flex flex-col gap-2">
