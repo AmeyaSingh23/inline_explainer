@@ -36,6 +36,16 @@ export default function CodePanel({ owner, repo, selectedFile, onBlocksReady, on
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const widgetRef = useRef<Monaco.editor.IContentWidget | null>(null);
     const selectedTextRef = useRef<string>("");
+    const [editorTheme, setEditorTheme] = useState("vs-dark");
+
+    useEffect(() => {
+        const update = () => setEditorTheme(document.documentElement.getAttribute("data-theme") === "light" ? "vs" : "vs-dark");
+        update();
+        const obs = new MutationObserver(update);
+        obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+        return () => obs.disconnect();
+    }, []);
+
     // Keep a stable ref to onOpenChat so the Monaco listener always calls the latest version
     const onOpenChatRef = useRef(onOpenChat);
     useEffect(() => { onOpenChatRef.current = onOpenChat; }, [onOpenChat]);
@@ -196,7 +206,7 @@ export default function CodePanel({ owner, repo, selectedFile, onBlocksReady, on
             height="100%"
             language={language}
             value={fileContent}
-            theme="vs-dark"
+            theme={editorTheme}
             onMount={handleEditorMount}
             options={{
                 readOnly: true,
