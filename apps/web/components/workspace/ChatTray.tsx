@@ -1,9 +1,11 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useLayoutEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { ModelTier, ChatSession } from "../../hooks/useChatSession";
 import { ChatTab } from "./WorkspaceShell";
+
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 interface Props {
     open: boolean;
@@ -42,9 +44,33 @@ export default function ChatTray({ open, onClose, repoChatSession, fileChatSessi
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
-    useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages, loading]);
+    const prevTabRef = useRef(activeTab);
+    const prevOpenRef = useRef(open);
+    const prevLoadingSessionRef = useRef(loadingSession);
+    const isMountedRef = useRef(false);
+
+    useIsomorphicLayoutEffect(() => {
+        if (!isMountedRef.current) {
+            isMountedRef.current = true;
+            if (open && !loadingSession) {
+                bottomRef.current?.scrollIntoView({ behavior: "auto" });
+            }
+            return;
+        }
+
+        const tabChanged = prevTabRef.current !== activeTab;
+        const openChanged = !prevOpenRef.current && open;
+        const sessionLoaded = prevLoadingSessionRef.current && !loadingSession;
+
+        prevTabRef.current = activeTab;
+        prevOpenRef.current = open;
+        prevLoadingSessionRef.current = loadingSession;
+
+        if (open && !loadingSession) {
+            const behavior = (tabChanged || openChanged || sessionLoaded) ? "auto" : "smooth";
+            bottomRef.current?.scrollIntoView({ behavior });
+        }
+    }, [messages, loading, activeTab, open, loadingSession]);
 
     useEffect(() => {
         if (!loadingSession && open) {
