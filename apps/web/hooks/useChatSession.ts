@@ -22,11 +22,11 @@ export function useChatSession(
     const [modelTier, setModelTier] = useState<ModelTier>("fast");
     const [modelUsed, setModelUsed] = useState("");
     const [loadingSession, setLoadingSession] = useState(false);
-    const loadedFileRef = useRef<string>("");
+    const loadedFileRef = useRef<string | null>(null);
 
-    // Load chat history when file changes
+    // Load chat history when file changes (filePath="" is valid for repo-level chat)
     useEffect(() => {
-        if (!open || !filePath || !repositoryId) return;
+        if (!open || !repositoryId) return;
         if (loadedFileRef.current === filePath) return;
         loadedFileRef.current = filePath;
 

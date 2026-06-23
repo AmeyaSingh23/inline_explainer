@@ -3,11 +3,16 @@
 import { useRef, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { ModelTier, ChatSession } from "../../hooks/useChatSession";
+import { ChatTab } from "./WorkspaceShell";
 
 interface Props {
     open: boolean;
     onClose: () => void;
-    chatSession: ChatSession;
+    repoChatSession: ChatSession;
+    fileChatSession: ChatSession;
+    activeTab: ChatTab;
+    onTabChange: (tab: ChatTab) => void;
+    selectedFileName: string | null;
 }
 
 const MODEL_LABELS: Record<ModelTier, { label: string; sublabel: string }> = {
@@ -15,7 +20,8 @@ const MODEL_LABELS: Record<ModelTier, { label: string; sublabel: string }> = {
     smart: { label: "Smart", sublabel: "Llama 70B+ / Pro" },
 };
 
-export default function ChatTray({ open, onClose, chatSession }: Props) {
+export default function ChatTray({ open, onClose, repoChatSession, fileChatSession, activeTab, onTabChange, selectedFileName }: Props) {
+    const chatSession = activeTab === "file" && selectedFileName ? fileChatSession : repoChatSession;
     const {
         messages,
         input,
@@ -52,6 +58,9 @@ export default function ChatTray({ open, onClose, chatSession }: Props) {
     }
 
     if (!open) return null;
+
+    const showTabs = !!selectedFileName;
+    const displayFileName = selectedFileName?.split("/").pop() || selectedFileName;
 
     return (
         <div className="h-full w-full bg-[var(--bg-surface)] flex flex-col border-l border-[var(--border)] min-w-0">
@@ -95,6 +104,38 @@ export default function ChatTray({ open, onClose, chatSession }: Props) {
                 </div>
             </div>
 
+            {/* Tabs — only shown when a file is selected */}
+            {showTabs && (
+                <div className="flex shrink-0 border-b border-[var(--border)] bg-[var(--bg-base)]">
+                    <button
+                        onClick={() => onTabChange("repo")}
+                        className={`flex-1 px-3 py-2 text-xs font-medium transition-colors relative ${
+                            activeTab === "repo"
+                                ? "text-[var(--text-primary)]"
+                                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                        }`}
+                    >
+                        Repository
+                        {activeTab === "repo" && (
+                            <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-[var(--accent)] rounded-full" />
+                        )}
+                    </button>
+                    <button
+                        onClick={() => onTabChange("file")}
+                        className={`flex-1 px-3 py-2 text-xs font-medium transition-colors relative truncate ${
+                            activeTab === "file"
+                                ? "text-[var(--text-primary)]"
+                                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                        }`}
+                    >
+                        <span className="truncate">{displayFileName}</span>
+                        {activeTab === "file" && (
+                            <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-[var(--accent)] rounded-full" />
+                        )}
+                    </button>
+                </div>
+            )}
+
             {/* Messages */}
             <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 flex flex-col gap-3 min-w-0">
                 {loadingSession && (
@@ -104,7 +145,9 @@ export default function ChatTray({ open, onClose, chatSession }: Props) {
                 )}
                 {!loadingSession && messages.length === 0 && (
                     <div className="flex-1 flex items-center justify-center text-[var(--text-muted)] text-xs text-center px-4">
-                        Ask anything about the selected passage or this file.
+                        {activeTab === "repo"
+                            ? "Ask anything about the repository structure and architecture."
+                            : "Ask anything about the selected passage or this file."}
                     </div>
                 )}
                 {messages.map((msg, i) => (

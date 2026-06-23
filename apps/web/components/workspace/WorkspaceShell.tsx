@@ -18,9 +18,12 @@ export interface ExplanationBlock {
     blockId: string; explanation: string;
 }
 
+export type ChatTab = "repo" | "file";
+
 export default function WorkspaceShell({ owner, repo }: Props) {
     const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
     const [chatOpen, setChatOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<ChatTab>("repo");
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const sidebarRef = useRef<PanelImperativeHandle>(null);
     const groupRef = useRef<GroupImperativeHandle>(null);
@@ -32,10 +35,23 @@ export default function WorkspaceShell({ owner, repo }: Props) {
     const [fileExplanation, setFileExplanation] = useState("");
     const [repoFileTree, setRepoFileTree] = useState<string[]>([]);
     const [repositoryId, setRepositoryId] = useState("");
+    const [readmeContent, setReadmeContent] = useState("");
 
-    const chatSession = useChatSession(
-        chatOpen,
-        selectedText,
+    // Repo-level chat session (filePath = "", uses README as context)
+    const repoChatSession = useChatSession(
+        chatOpen && activeTab === "repo",
+        activeTab === "repo" ? selectedText : "",
+        "",              // empty filePath = repo-level
+        readmeContent,   // README as fileCode context
+        "",              // no file explanation for repo chat
+        repoFileTree,
+        repositoryId
+    );
+
+    // File-level chat session (filePath = selectedFile)
+    const fileChatSession = useChatSession(
+        chatOpen && activeTab === "file",
+        activeTab === "file" ? selectedText : "",
         selectedFile ?? "",
         fileCode,
         fileExplanation,
@@ -51,13 +67,57 @@ export default function WorkspaceShell({ owner, repo }: Props) {
         }
     }, [owner, repo]);
 
+    // Fetch README for repo-level chat context
+    useEffect(() => {
+        if (!owner || !repo) return;
+        async function fetchReadme() {
+            try {
+                const res = await fetch(
+                    `https://api.github.com/repos/${owner}/${repo}/readme`,
+                    { headers: { Authorization: `Bearer ${process.env.NEXT_PUBLIC_GITHUB_TOKEN}` } }
+                );
+                if (res.ok) {
+                    const data = await res.json();
+                    const decoded = atob(data.content.replace(/\n/g, ""));
+                    setReadmeContent(decoded);
+                } else {
+                    setReadmeContent("");
+                }
+            } catch (e) {
+                console.error("Failed to fetch README:", e);
+                setReadmeContent("");
+            }
+        }
+        fetchReadme();
+    }, [owner, repo]);
+
     function handleTextSelect(text: string) {
         setSelectedText(text);
     }
 
+    // Called by Ask AI in CodePanel or ExplanationPanel — opens file-level chat
     function handleOpenChat(text: string) {
         setSelectedText(text);
+        setActiveTab("file");
         setChatOpen(true);
+    }
+
+    // Called by the ExplanationPanel "Deep Dive" button (no selected text)
+    function handleOpenFileChat() {
+        setSelectedText("");
+        setActiveTab("file");
+        setChatOpen(true);
+    }
+
+    // Called by the header chat icon — toggles repo-level chat
+    function handleToggleRepoChat() {
+        if (chatOpen && activeTab === "repo") {
+            setChatOpen(false);
+        } else {
+            setSelectedText("");
+            setActiveTab("repo");
+            setChatOpen(true);
+        }
     }
 
     function handleToggleSidebar() {
@@ -114,9 +174,9 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                 <span className="text-[var(--text-muted)] text-sm">{owner}/{repo}</span>
             </header>
 
-            {/* Deep Dive button — fixed next to ThemeToggle */}
+            {/* Deep Dive button — fixed next to ThemeToggle, toggles repo chat */}
             <button
-                onClick={() => { setSelectedText(""); setChatOpen(prev => !prev); }}
+                onClick={handleToggleRepoChat}
                 title="Deep Dive"
                 className="fixed top-3 right-[52px] z-50 p-2 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             >
@@ -176,7 +236,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                     
                     <ResizeHandle disabled={!sidebarOpen} />
 
-                    <Panel defaultSize={chatOpen ? 42 : 42} minSize={20} id="code-panel">
+                    <Panel defaultSize={42} minSize={20} id="code-panel">
                         <CodePanel
                             owner={owner}
                             repo={repo}
@@ -191,7 +251,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
 
                     <ResizeHandle />
 
-                    <Panel defaultSize={chatOpen ? 43 : 43} minSize={15} id="explanation-panel">
+                    <Panel defaultSize={43} minSize={15} id="explanation-panel">
                         <ExplanationPanel
                             blocks={blocks}
                             explanations={explanations}
@@ -199,6 +259,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                             onBlockHover={setActiveBlockId}
                             onTextSelect={handleTextSelect}
                             onOpenChat={handleOpenChat}
+                            onOpenFileChat={handleOpenFileChat}
                             onExplanationsReady={(exps) => {
                                 setExplanations(exps);
                                 if (exps.length > 0) setFileExplanation(exps[0].explanation);
@@ -215,7 +276,11 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                                 <ChatTray
                                     open={chatOpen}
                                     onClose={() => setChatOpen(false)}
-                                    chatSession={chatSession}
+                                    repoChatSession={repoChatSession}
+                                    fileChatSession={fileChatSession}
+                                    activeTab={activeTab}
+                                    onTabChange={setActiveTab}
+                                    selectedFileName={selectedFile}
                                 />
                             </Panel>
                         </>

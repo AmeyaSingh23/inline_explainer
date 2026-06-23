@@ -61,6 +61,20 @@ def _build_system_prompt(req: ChatRequest) -> str:
     if req.selected_text.strip():
         selected_passage_section = f'\n\nThe developer selected this passage to ask about:\n"""{req.selected_text}"""'
 
+    # Repo-level chat (no specific file open)
+    if not req.file_path.strip():
+        readme_section = ""
+        if req.file_code.strip():
+            readme_section = f"\n\nREADME contents:\n```\n{req.file_code}\n```"
+
+        return f"""You are a senior software engineer helping a developer understand a codebase at a high level.
+
+IMPORTANT: When asked about what files exist, what folders contain, or which files are in the project — always answer using the COMPLETE FILE TREE provided below. Do not infer file locations from import paths or make assumptions.
+{file_tree_section}{readme_section}{selected_passage_section}
+
+The developer is exploring this repository and has no specific file open. Answer their questions about the repository's architecture, structure, purpose, and how different parts connect. Be clear and concise. Write in plain markdown."""
+
+    # File-level chat
     return f"""You are a senior software engineer helping a developer deeply understand a specific part of a codebase.
 
 IMPORTANT: When asked about what files exist, what folders contain, or which files are in the project — always answer using the COMPLETE FILE TREE provided below. Do not infer file locations from import paths or make assumptions.
