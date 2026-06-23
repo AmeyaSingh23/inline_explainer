@@ -8,7 +8,6 @@ interface Props {
     explanations: ExplanationBlock[];
     activeBlockId: string | null;
     onBlockHover: (id: string) => void;
-    onTextSelect: (text: string) => void;
     onOpenChat: (text: string) => void;
     onOpenFileChat: () => void;
     onExplanationsReady: (explanations: ExplanationBlock[]) => void;
@@ -73,7 +72,7 @@ function SkeletonCard() {
 
 interface PopupPos { x: number; y: number; }
 
-export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onOpenFileChat, onExplanationsReady, owner, repo }: Props) {
+export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, onExplanationsReady, owner, repo }: Props) {
     const [status, setStatus] = useState<CardStatus>("loading");
     const [explanation, setExplanation] = useState("");
     const [errorMsg, setErrorMsg] = useState("");
@@ -342,7 +341,6 @@ export default function ExplanationPanel({ blocks, onTextSelect, onOpenChat, onO
         const selection = window.getSelection()?.toString().trim();
         if (selection && selection.length > 0) {
             pendingTextRef.current = selection;
-            onTextSelect(selection);
             setPopup({ x: e.clientX, y: e.clientY });
         } else {
             setPopup(null);

@@ -38,9 +38,10 @@ export default function WorkspaceShell({ owner, repo }: Props) {
     const [readmeContent, setReadmeContent] = useState("");
 
     // Repo-level chat session (filePath = "", uses README as context)
+    // Never receives selectedText — code selections always route to file chat
     const repoChatSession = useChatSession(
         chatOpen && activeTab === "repo",
-        activeTab === "repo" ? selectedText : "",
+        "",              // repo chat never gets selected text
         "",              // empty filePath = repo-level
         readmeContent,   // README as fileCode context
         "",              // no file explanation for repo chat
@@ -51,7 +52,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
     // File-level chat session (filePath = selectedFile)
     const fileChatSession = useChatSession(
         chatOpen && activeTab === "file",
-        activeTab === "file" ? selectedText : "",
+        selectedText,
         selectedFile ?? "",
         fileCode,
         fileExplanation,
@@ -90,10 +91,6 @@ export default function WorkspaceShell({ owner, repo }: Props) {
         }
         fetchReadme();
     }, [owner, repo]);
-
-    function handleTextSelect(text: string) {
-        setSelectedText(text);
-    }
 
     // Called by Ask AI in CodePanel or ExplanationPanel — opens file-level chat
     function handleOpenChat(text: string) {
@@ -257,7 +254,6 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                             explanations={explanations}
                             activeBlockId={activeBlockId}
                             onBlockHover={setActiveBlockId}
-                            onTextSelect={handleTextSelect}
                             onOpenChat={handleOpenChat}
                             onOpenFileChat={handleOpenFileChat}
                             onExplanationsReady={(exps) => {

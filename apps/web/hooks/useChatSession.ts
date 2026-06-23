@@ -23,12 +23,14 @@ export function useChatSession(
     const [modelUsed, setModelUsed] = useState("");
     const [loadingSession, setLoadingSession] = useState(false);
     const loadedFileRef = useRef<string | null>(null);
+    const processedContextRef = useRef<string>("");
 
     // Load chat history when file changes (filePath="" is valid for repo-level chat)
     useEffect(() => {
         if (!open || !repositoryId) return;
         if (loadedFileRef.current === filePath) return;
         loadedFileRef.current = filePath;
+        processedContextRef.current = "";
 
         setMessages([]);
         setInput("");
@@ -56,11 +58,13 @@ export function useChatSession(
                     if (!lastMsg || lastMsg.role !== "context" || lastMsg.content !== selectedText) {
                         history = [...history, { role: "context", content: selectedText }];
                     }
+                    processedContextRef.current = selectedText;
                 }
                 setMessages(history);
             } catch {
                 if (selectedText) {
                     setMessages([{ role: "context", content: selectedText }]);
+                    processedContextRef.current = selectedText;
                 }
             } finally {
                 setLoadingSession(false);
@@ -73,8 +77,9 @@ export function useChatSession(
     // Append new context card when selectedText changes while tray is open
     useEffect(() => {
         if (!open || !selectedText || loadingSession) return;
-        const lastMsg = messages[messages.length - 1];
-        if (lastMsg && lastMsg.role === "context" && lastMsg.content === selectedText) return;
+        // Skip if we already processed this exact selectedText
+        if (processedContextRef.current === selectedText) return;
+        processedContextRef.current = selectedText;
         setMessages((prev) => [...prev, { role: "context", content: selectedText }]);
     }, [selectedText, open, loadingSession]);
 
