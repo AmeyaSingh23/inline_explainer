@@ -8,6 +8,7 @@ import ChatTray from "./ChatTray";
 import { useChatSession } from "../../hooks/useChatSession";
 import { Panel, Group, PanelImperativeHandle, GroupImperativeHandle } from "react-resizable-panels";
 import ResizeHandle from "./ResizeHandle";
+import Link from "next/link";
 
 interface Props { owner: string; repo: string; }
 
@@ -123,16 +124,16 @@ export default function WorkspaceShell({ owner, repo }: Props) {
         if (sidebar && group) {
             const currentLayout = group.getLayout();
             const keys = Object.keys(currentLayout);
-            
+
             const sidebarKey = keys.find(k => k.includes("sidebar")) || "sidebar-panel";
             const codeKey = keys.find(k => k.includes("code")) || "code-panel";
             const expKey = keys.find(k => k.includes("explanation")) || "explanation-panel";
-            
+
             if (sidebar.isCollapsed()) {
                 const codeSize = currentLayout[codeKey] ?? 42;
                 const expSize = currentLayout[expKey] ?? 43;
                 const totalCodeExp = codeSize + expSize;
-                
+
                 const newLayout = { ...currentLayout };
                 newLayout[sidebarKey] = 15;
                 if (totalCodeExp > 0) {
@@ -148,12 +149,12 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                 const sidebarSize = currentLayout[sidebarKey] ?? 15;
                 const codeSize = currentLayout[codeKey] ?? 42;
                 const expSize = currentLayout[expKey] ?? 43;
-                
+
                 const newLayout = { ...currentLayout };
                 newLayout[sidebarKey] = 0;
                 newLayout[codeKey] = codeSize + (sidebarSize / 2);
                 newLayout[expKey] = expSize + (sidebarSize / 2);
-                
+
                 group.setLayout(newLayout);
                 setSidebarOpen(false);
             }
@@ -181,7 +182,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
             </button>
- 
+
             <div className="flex flex-1 overflow-hidden">
                 {/* Icon strip — always visible, never collapses */}
                 <div className="flex flex-col items-center w-10 shrink-0 border-r border-[var(--border)] bg-[var(--bg-surface)] py-2 gap-2">
@@ -205,9 +206,28 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                             <polyline points="15 18 9 12 15 6" />
                         </svg>
                     </button>
-                    {/* Placeholder for future profile/nav icons */}
+                    {/* Profile link */}
+                    <Link
+                        href="/profile"
+                        title="Profile"
+                        className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors"
+                    >
+                        <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        >
+                            <circle cx="12" cy="8" r="4" />
+                            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+                        </svg>
+                    </Link>
                 </div>
- 
+
                 <Group orientation="horizontal" className="flex-1" groupRef={groupRef}>
                     <Panel
                         defaultSize={15}
@@ -230,7 +250,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                             onTreeReady={setRepoFileTree}
                         />
                     </Panel>
-                    
+
                     <ResizeHandle disabled={!sidebarOpen} />
 
                     <Panel defaultSize={42} minSize={20} id="code-panel">
