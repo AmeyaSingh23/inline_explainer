@@ -33,6 +33,8 @@ export default function ChatTray({ open, onClose, repoChatSession, fileChatSessi
         setModelTier,
         modelUsed,
         loadingSession,
+        pendingContext,
+        setPendingContext,
         sendMessage,
     } = chatSession;
 
@@ -199,6 +201,32 @@ export default function ChatTray({ open, onClose, repoChatSession, fileChatSessi
                                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                             </svg>
                         </button>
+                    </div>
+                )}
+                {/* Pending context attachment */}
+                {pendingContext && (
+                    <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-[9px] text-[var(--text-muted)] font-mono uppercase tracking-wider">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                </svg>
+                                Code context attached
+                            </div>
+                            <button
+                                onClick={() => setPendingContext(null)}
+                                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                                title="Remove context"
+                            >
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="font-mono text-[10px] text-[var(--text-secondary)] overflow-x-auto whitespace-pre leading-relaxed max-h-20 overflow-y-auto">
+                            {pendingContext}
+                        </div>
                     </div>
                 )}
                 <div className="flex items-end gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 focus-within:border-[var(--text-muted)] transition-colors">
