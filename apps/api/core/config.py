@@ -20,7 +20,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # --- App ---
 APP_ENV      = os.getenv("APP_ENV", "development")
-API_URL      = os.getenv("NEXT_PUBLIC_API_URL", "http://localhost:8000")
+API_URL      = os.getenv("NEXT_PUBLIC_API_URL", "http://127.0.0.1:8000")
 
 # --- Processing limits ---
 REPO_SIZE_LIMIT_MB = int(os.getenv("REPO_SIZE_LIMIT_MB", "50"))

@@ -62,11 +62,58 @@ export default function WorkspaceShell({ owner, repo }: Props) {
     );
 
     useEffect(() => {
+        let active = true;
         const raw = sessionStorage.getItem(`graph:${owner}/${repo}`);
         if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed.job_id) setRepositoryId(parsed.job_id);
+        } else {
+            async function restoreGraph() {
+                try {
+                    const { createClient } = await import("@/lib/supabase/client");
+                    const supabase = createClient();
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session || !active) return;
+
+                    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+                    const reposRes = await fetch(`${apiUrl}/api/user/repositories`, {
+                        headers: { Authorization: `Bearer ${session.access_token}` },
+                    });
+                    if (!reposRes.ok || !active) return;
+                    const reposData = await reposRes.json();
+
+                    const targetUrlSuffix = `/${owner}/${repo}`.toLowerCase();
+                    const matched = reposData.repositories?.find((r: any) =>
+                        r.repo_url.toLowerCase().endsWith(targetUrlSuffix)
+                    );
+                    if (!matched || !active) return;
+
+                    const ingestRes = await fetch(`${apiUrl}/api/ingest`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${session.access_token}`
+                        },
+                        body: JSON.stringify({ repo_url: matched.repo_url }),
+                    });
+                    if (!ingestRes.ok || !active) return;
+                    const data = await ingestRes.json();
+
+                    if (active && data.job_id) {
+                        setRepositoryId(data.job_id);
+                        sessionStorage.setItem(
+                            `graph:${owner}/${repo}`,
+                            JSON.stringify({ job_id: data.job_id, nodes: data.nodes, edges: data.edges })
+                        );
+                        window.dispatchEvent(new Event("storage"));
+                    }
+                } catch (e) {
+                    console.error("Failed to restore graph fallback:", e);
+                }
+            }
+            restoreGraph();
         }
+        return () => { active = false; };
     }, [owner, repo]);
 
     // Fetch README for repo-level chat context
@@ -282,6 +329,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
                             }}
                             owner={owner}
                             repo={repo}
+                            repositoryId={repositoryId}
                         />
                     </Panel>
 
