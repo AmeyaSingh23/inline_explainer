@@ -44,7 +44,7 @@ export function useChatSession(
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!session) return;
 
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
                 const res = await fetch(
                     `${apiUrl}/api/chat/session?repository_id=${encodeURIComponent(repositoryId)}&file_path=${encodeURIComponent(filePath)}`,
                     { headers: { Authorization: `Bearer ${session.access_token}` } }
@@ -96,7 +96,7 @@ export function useChatSession(
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) throw new Error("Not authenticated");
 
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
             const res = await fetch(`${apiUrl}/api/chat`, {
                 method: "POST",
                 headers: {

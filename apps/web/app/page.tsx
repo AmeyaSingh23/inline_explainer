@@ -36,7 +36,7 @@ export default function LandingPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("You must be logged in.");
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
       const res = await fetch(`${apiUrl}/api/ingest`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },

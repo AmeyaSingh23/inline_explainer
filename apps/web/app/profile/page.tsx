@@ -41,7 +41,7 @@ export default function ProfilePage() {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!session) { router.push("/login"); return; }
 
-                const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
                 const res = await fetch(`${apiUrl}/api/user/repositories`, {
                     headers: { Authorization: `Bearer ${session.access_token}` },
                 });
@@ -71,7 +71,7 @@ export default function ProfilePage() {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) throw new Error("Not authenticated.");
 
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
             const res = await fetch(`${apiUrl}/api/user`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${session.access_token}` },

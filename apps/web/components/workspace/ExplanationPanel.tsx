@@ -13,6 +13,7 @@ interface Props {
     onExplanationsReady: (explanations: ExplanationBlock[]) => void;
     owner: string;
     repo: string;
+    repositoryId: string;
 }
 
 interface GraphNode {
@@ -72,7 +73,7 @@ function SkeletonCard() {
 
 interface PopupPos { x: number; y: number; }
 
-export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, onExplanationsReady, owner, repo }: Props) {
+export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, onExplanationsReady, owner, repo, repositoryId }: Props) {
     const [status, setStatus] = useState<CardStatus>("loading");
     const [explanation, setExplanation] = useState("");
     const [errorMsg, setErrorMsg] = useState("");
@@ -219,12 +220,9 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
             if (!active) return;
             if (!session) { setStatus("error"); return; }
 
-            const repositoryId = (() => {
-                const g = sessionStorage.getItem(`graph:${owner}/${repo}`);
-                return g ? JSON.parse(g).job_id : "";
-            })();
 
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
             try {
                 const res = await fetch(`${apiUrl}/api/explain`, {
@@ -246,19 +244,18 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
                 if (!active) return;
 
                 if (!res.ok) {
-                    let message = "Failed to load explanation. Try selecting the file again.";
-                    if (res.status === 429) {
-                        try {
-                            const errData = await res.json();
-                            message = errData.detail || "Rate limit exceeded. Please wait a moment and try again.";
-                        } catch {
-                            message = "Rate limit exceeded. Please wait a moment and try again.";
+                    let message = `Failed to load explanation (HTTP ${res.status}).`;
+                    try {
+                        const errData = await res.json();
+                        if (errData.detail) {
+                            message = typeof errData.detail === "string" ? errData.detail : JSON.stringify(errData.detail);
                         }
-                    }
+                    } catch {}
                     if (active) {
                         setErrorMsg(message);
                         setStatus("error");
                     }
+                    console.error("Explanation fetch failed:", res.status, message);
                     return;
                 }
 
@@ -296,7 +293,14 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
                         if (data === "[DONE]") break;
                         try {
                             const parsed = JSON.parse(data);
-                            if (parsed.error) { if (active) setStatus("error"); return; }
+                            if (parsed.error) {
+                                if (active) {
+                                    setErrorMsg(`API Error: ${parsed.error}`);
+                                    setStatus("error");
+                                }
+                                console.error("Streaming API error:", parsed.error);
+                                return;
+                            }
                             // Cache hit — backend sends full text in one chunk
                             if (parsed.cached) continue;
                             if (parsed.text) {
@@ -321,11 +325,12 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
                 } else {
                     setStatus("error");
                 }
-            } catch {
+            } catch (err: any) {
                 if (active) {
-                    setErrorMsg("Failed to load explanation. Try selecting the file again.");
+                    setErrorMsg(`Request failed: ${err?.message || err}`);
                     setStatus("error");
                 }
+                console.error("Explanation request error:", err);
             }
         }
 
@@ -335,7 +340,7 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
             active = false;
             controller.abort();
         };
-    }, [blocks]);
+    }, [blocks, repositoryId]);
 
     function handleMouseUp(e: React.MouseEvent) {
         const selection = window.getSelection()?.toString().trim();
