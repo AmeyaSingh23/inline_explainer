@@ -81,6 +81,7 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
     const fetchedRef = useRef<string>("");
     const [popup, setPopup] = useState<PopupPos | null>(null);
     const pendingTextRef = useRef<string>("");
+    const activeFileRef = useRef<string>("");
 
     useEffect(() => {
         // Race-condition guard: this flag is flipped false in the cleanup function
@@ -94,11 +95,8 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
         if (blocks.length === 0) return;
         const block = blocks[0];
         const filePath = block.id;
-        setCurrentFile(filePath);
-        setPopup(null);
-        pendingTextRef.current = "";
 
-        // Check sessionStorage cache first
+        // 1. Instant Cache Hit Check (no delay)
         const cacheKey = `explanations:${owner}/${repo}:${filePath}`;
         const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
@@ -106,13 +104,23 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
                 setExplanation(cached);
                 setStatus("done");
                 onExplanationsReady([{ blockId: filePath, explanation: cached }]);
+                setCurrentFile(filePath);
+                setPopup(null);
+                pendingTextRef.current = "";
+                fetchedRef.current = filePath;
             }
             return () => { active = false; };
         }
 
-        if (fetchedRef.current === filePath) return () => { active = false; };
-        fetchedRef.current = filePath;
+        // If we have already started/completed fetching this file, do nothing
+        if (fetchedRef.current === filePath) {
+            return;
+        }
 
+        // Reset display state immediately for the new file (so the loader is shown)
+        setCurrentFile(filePath);
+        setPopup(null);
+        pendingTextRef.current = "";
         setStatus("loading");
         setExplanation("");
         setErrorMsg("");
@@ -218,9 +226,11 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
             const supabase = createClient();
             const { data: { session } } = await supabase.auth.getSession();
             if (!active) return;
-            if (!session) { setStatus("error"); return; }
-
-
+            if (!session) {
+                setStatus("error");
+                fetchedRef.current = "";
+                return;
+            }
 
             const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -254,6 +264,7 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
                     if (active) {
                         setErrorMsg(message);
                         setStatus("error");
+                        fetchedRef.current = "";
                     }
                     console.error("Explanation fetch failed:", res.status, message);
                     return;
@@ -263,6 +274,7 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
                     if (active) {
                         setErrorMsg("Failed to load explanation. Try selecting the file again.");
                         setStatus("error");
+                        fetchedRef.current = "";
                     }
                     return;
                 }
@@ -278,8 +290,6 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
                     if (done) break;
 
                     if (!active) {
-                        // File changed mid-stream — reader was already cancelled by
-                        // the AbortController in the cleanup function below.
                         return;
                     }
 
@@ -297,11 +307,11 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
                                 if (active) {
                                     setErrorMsg(`API Error: ${parsed.error}`);
                                     setStatus("error");
+                                    fetchedRef.current = "";
                                 }
                                 console.error("Streaming API error:", parsed.error);
                                 return;
                             }
-                            // Cache hit — backend sends full text in one chunk
                             if (parsed.cached) continue;
                             if (parsed.text) {
                                 accumulated += parsed.text;
@@ -311,6 +321,7 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
                             if (active) {
                                 setErrorMsg("Failed to load explanation. Try selecting the file again.");
                                 setStatus("error");
+                                fetchedRef.current = "";
                             }
                         }
                     }
@@ -324,21 +335,34 @@ export default function ExplanationPanel({ blocks, onOpenChat, onOpenFileChat, o
                     onExplanationsReady([{ blockId: filePath, explanation: accumulated }]);
                 } else {
                     setStatus("error");
+                    fetchedRef.current = "";
                 }
             } catch (err: any) {
+                if (err.name === "AbortError") return;
                 if (active) {
                     setErrorMsg(`Request failed: ${err?.message || err}`);
                     setStatus("error");
+                    fetchedRef.current = "";
                 }
                 console.error("Explanation request error:", err);
             }
         }
 
-        run();
+        // 2. Cache Miss - Setup Debounce
+        const timer = setTimeout(() => {
+            if (!active) return;
+            fetchedRef.current = filePath;
+            run();
+        }, 300); // 300ms debounce
+
+        activeFileRef.current = filePath;
 
         return () => {
             active = false;
-            controller.abort();
+            clearTimeout(timer);
+            if (activeFileRef.current !== filePath) {
+                controller.abort();
+            }
         };
     }, [blocks, repositoryId]);
 
