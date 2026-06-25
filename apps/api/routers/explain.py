@@ -5,7 +5,7 @@ Rate limited per-user on real cache misses only.
 """
 import json
 import httpx  # type: ignore
-from fastapi import APIRouter, HTTPException, Depends  # type: ignore
+from fastapi import APIRouter, HTTPException, Depends, Request  # type: ignore
 from fastapi.responses import StreamingResponse  # type: ignore
 from pydantic import BaseModel  # type: ignore
 from core.config import NVIDIA_API_KEY, GEMINI_API_KEY  # type: ignore
@@ -134,7 +134,7 @@ async def _stream_gemini(prompt: str):
 
 
 @router.post("/explain")
-async def explain(payload: ExplainRequest, user_id: str = Depends(get_current_user_id)):
+async def explain(payload: ExplainRequest, request: Request, user_id: str = Depends(get_current_user_id)):
     # Check Supabase cache first — if cached, stream it instantly as a single chunk.
     # Cache hits do NOT count against the rate limit.
     cached = await get_explanation(user_id, payload.repository_id, payload.file_path)
@@ -160,6 +160,9 @@ async def explain(payload: ExplainRequest, user_id: str = Depends(get_current_us
         if NVIDIA_API_KEY:
             try:
                 async for chunk in _stream_nvidia(prompt):
+                    if await request.is_disconnected():
+                        print("[explain] Client disconnected during NVIDIA stream. Aborting Llama stream.")
+                        return
                     full_text.append(chunk)
                     yield f"data: {json.dumps({'text': chunk})}\n\n"
                 provider_worked = True
@@ -170,6 +173,9 @@ async def explain(payload: ExplainRequest, user_id: str = Depends(get_current_us
         if not provider_worked and GEMINI_API_KEY:
             try:
                 async for chunk in _stream_gemini(prompt):
+                    if await request.is_disconnected():
+                        print("[explain] Client disconnected during Gemini stream. Aborting Gemini stream.")
+                        return
                     full_text.append(chunk)
                     yield f"data: {json.dumps({'text': chunk})}\n\n"
                 provider_worked = True
