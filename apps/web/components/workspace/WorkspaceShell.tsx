@@ -37,6 +37,7 @@ export default function WorkspaceShell({ owner, repo }: Props) {
     const [repoFileTree, setRepoFileTree] = useState<string[]>([]);
     const [repositoryId, setRepositoryId] = useState("");
     const [readmeContent, setReadmeContent] = useState("");
+    const [dismissMobileWarning, setDismissMobileWarning] = useState(false);
 
     // Repo-level chat session (filePath = "", uses README as context)
     // Never receives selectedText — code selections always route to file chat
@@ -213,7 +214,19 @@ export default function WorkspaceShell({ owner, repo }: Props) {
     // collapsible panel collapses — we just need collapsible + collapsedSize.
 
     return (
-        <div className="h-screen w-screen flex flex-col bg-[var(--bg-base)] overflow-hidden">
+        <div className="h-screen w-screen min-w-[1024px] flex flex-col bg-[var(--bg-base)] overflow-hidden">
+            {!dismissMobileWarning && (
+                <div className="md:hidden fixed top-0 left-0 w-full z-[100] bg-orange-600/90 backdrop-blur-sm text-white px-4 py-3 flex items-start justify-between shadow-lg">
+                    <div className="flex flex-col gap-1 pr-4">
+                        <p className="text-sm font-semibold">Desktop recommended</p>
+                        <p className="text-xs opacity-90">The workspace interface is designed for larger screens. For the best experience, please open on a desktop.</p>
+                    </div>
+                    <button onClick={() => setDismissMobileWarning(true)} className="p-1 shrink-0 rounded-md hover:bg-white/20 transition-colors mt-0.5">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+            )}
+
             <header className="h-12 flex items-center px-4 border-b border-[var(--border)] shrink-0 gap-4">
                 <span className="text-[var(--text-primary)] font-semibold text-sm">InlineExplainer</span>
                 <span className="text-[var(--text-muted)] text-sm">{owner}/{repo}</span>

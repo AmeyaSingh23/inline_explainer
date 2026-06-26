@@ -67,7 +67,7 @@ export default function LandingPage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg-base)] px-4 py-12 relative">
       {/* Profile Navigation */}
-      <div className="fixed top-3 right-[60px] z-50">
+      <div className="fixed top-3 right-[52px] z-50">
         <Link
           href="/profile"
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors text-xs font-medium"
@@ -96,7 +96,7 @@ export default function LandingPage() {
             <p className="text-[var(--text-secondary)]">Paste any public repository URL to get structural, inline explanations anchored directly to the code.</p>
           </div>
           <div className="flex flex-col gap-2">
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={handleKeyDown} disabled={loading}
                 placeholder="https://github.com/owner/repo"
                 className="flex-1 px-4 py-3 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--text-secondary)] transition-colors disabled:opacity-50"
@@ -113,7 +113,7 @@ export default function LandingPage() {
         </div>
       </div>
 
-      <footer className="w-full max-w-2xl flex items-center justify-between gap-4 pt-8 mt-8 border-t border-[var(--border-subtle)] text-xs text-[var(--text-muted)]">
+      <footer className="w-full max-w-2xl flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 mt-8 border-t border-[var(--border-subtle)] text-xs text-[var(--text-muted)]">
         <div className="flex items-center gap-4">
           <Link href="/privacy" className="hover:text-[var(--text-primary)] transition-colors">
             Privacy

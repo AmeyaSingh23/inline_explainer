@@ -137,7 +137,7 @@ export default function ProfilePage() {
             <div className="max-w-2xl mx-auto flex flex-col gap-10">
 
                 {/* Header */}
-                <div className="flex items-start justify-between">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="flex flex-col gap-1">
                         <Link href="/" className="text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
                             ← Back to InlineExplainer
@@ -150,7 +150,7 @@ export default function ProfilePage() {
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <a
                             href={`https://github.com/${profile?.username}`}
                             target="_blank"
@@ -198,7 +198,7 @@ export default function ProfilePage() {
                                 <Link
                                     key={r.id}
                                     href={parseRepoToPath(r.repo_name)}
-                                    className="group flex items-center justify-between px-4 py-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] hover:border-[var(--text-muted)] transition-colors"
+                                    className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] hover:border-[var(--text-muted)] transition-colors"
                                 >
                                     <div className="flex flex-col gap-0.5 min-w-0">
                                         <span className="text-sm font-medium text-[var(--text-primary)] truncate">
@@ -208,7 +208,7 @@ export default function ProfilePage() {
                                             {r.repo_url}
                                         </span>
                                     </div>
-                                    <div className="flex items-center gap-3 shrink-0 ml-4">
+                                    <div className="flex items-center gap-3 shrink-0 sm:ml-4">
                                         <span className="text-xs text-[var(--text-muted)]">
                                             {formatDate(r.created_at)}
                                         </span>
