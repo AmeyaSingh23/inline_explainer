@@ -188,6 +188,7 @@ async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)
     async def generate():
         full_text = []
         provider_worked = False
+        actual_model_used = None # tracks the model which served the answer
 
         if NVIDIA_API_KEY:
             try:
@@ -195,6 +196,7 @@ async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)
                     full_text.append(chunk)
                     yield f"data: {json.dumps({'text': chunk})}\n\n"
                 provider_worked = True
+                actual_model_used = models["nvidia"]
             except Exception as e:
                 print(f"[chat] NVIDIA streaming failed ({e}), falling back to Gemini...")
                 full_text = []
@@ -205,6 +207,7 @@ async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)
                     full_text.append(chunk)
                     yield f"data: {json.dumps({'text': chunk})}\n\n"
                 provider_worked = True
+                actual_model_used = models["gemini"]
             except Exception as e:
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
@@ -215,6 +218,8 @@ async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)
                 await upsert_chat_session(user_id, payload.repository_id, payload.file_path, updated_messages)
             except Exception as e:
                 print(f"[chat] Failed to persist session: {e}")
+            if actual_model_used:
+                yield f"data: {json.dumps({'model_used': actual_model_used})}\n\n"
 
         yield "data: [DONE]\n\n"
 
