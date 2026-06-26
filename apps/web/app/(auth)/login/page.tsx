@@ -16,7 +16,7 @@ export default function LoginPage() {
     }
 
     return (
-        <main className="min-h-screen flex items-center justify-center bg-[var(--bg-base)]">
+        <main className="min-h-screen flex items-center justify-center bg-[var(--bg-base)] px-4">
             <div className="flex flex-col items-center gap-6">
                 <div className="flex flex-col items-center gap-2">
                     <h1 className="text-3xl font-bold text-[var(--text-primary)]">InlineExplainer</h1>
