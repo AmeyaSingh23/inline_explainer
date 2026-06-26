@@ -72,11 +72,17 @@ export default function PrivacyPage() {
                     <section className="flex flex-col gap-2">
                         <h2 className="text-lg font-semibold text-[var(--text-primary)]">5. Data retention and deletion</h2>
                         <p>
-                            There is currently no self-service "delete my account" option in the app. If you'd like your
-                            account and all associated data (repositories, explanations, chat history) permanently deleted,
-                            email <a href="mailto:ameyasingh619@gmail.com" className="text-[var(--text-primary)] underline hover:no-underline">ameyasingh619@gmail.com</a>{" "}
-                            and it will be removed manually. A self-service deletion option is planned for a future update,
-                            at which point this policy will be revised accordingly.
+                            You can delete your account and all associated data — repositories, explanations, and chat
+                            history — at any time from your{" "}
+                            <Link href="/profile" className="text-[var(--text-primary)] underline hover:no-underline">
+                                Profile page
+                            </Link>
+                            . The deletion is immediate and permanent; it cannot be undone. If you run into any issues
+                            with account deletion, you can also reach out at{" "}
+                            <a href="mailto:ameyasingh619@gmail.com" className="text-[var(--text-primary)] underline hover:no-underline">
+                                ameyasingh619@gmail.com
+                            </a>{" "}
+                            and it will be handled manually.
                         </p>
                     </section>
 
