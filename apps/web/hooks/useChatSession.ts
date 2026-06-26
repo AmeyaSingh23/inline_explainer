@@ -165,10 +165,6 @@ export function useChatSession(
                     }
                 }
             }
-
-            // Set model label — backend doesn't stream model_used, infer from tier
-            setModelUsed(modelTier === "fast" ? "gemini-2.5-flash" : "gemini-2.5-pro");
-
         } catch (err: any) {
             setMessages(messages);
             setInput(userContent);
