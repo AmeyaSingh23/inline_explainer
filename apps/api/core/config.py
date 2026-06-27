@@ -17,6 +17,7 @@ SUPABASE_JWKS_URL          = os.getenv("SUPABASE_JWKS_URL", "")
 # --- AI Providers ---
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
 
 # --- App ---
 APP_ENV      = os.getenv("APP_ENV", "development")
