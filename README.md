@@ -36,11 +36,11 @@ InlineExplainer is a full-stack AI-powered tool that helps developers understand
 | **AST Code Graph** | Extracts function/class definitions, call relationships, and import edges using tree-sitter via Graphify |
 | **Cross-File Context** | Explanations are enriched with snippets from connected files (callers, callees, imports) — not just the file in isolation |
 | **Streaming Explanations** | Token-by-token SSE streaming from the LLM so you see the explanation build in real time |
-| **Dual AI Provider Fallback** | NVIDIA NIM (Llama 3.1/3.3 70B) as primary, Google Gemini (2.5 Flash/Pro) as automatic fallback |
+| **Multi-Provider Waterfall Router** | Fallback router across Groq (Llama 3.3 70B), Google Gemini (1.5/2.0/2.5), and NVIDIA NIM (Llama 3.1/3.3) |
 | **Repo & File Chat** | Two-tab chat system — repo-level (uses README + file tree) and file-level (uses file code + explanation + selected text) |
 | **Code Selection → Ask AI** | Select any code in the Monaco editor or text in the explanation panel → a floating "Ask AI" button opens the chat with that selection as context |
 | **Pending Context Attachment** | Selected code appears as a dismissible chip above the chat input before sending, so you can see exactly what context will be included |
-| **Model Tier Toggle** | Switch between Fast (Gemini 2.5 Flash / Llama 70B) and Smart (Gemini 2.5 Pro / Llama 3.3 70B) per-message |
+| **Model Tier Toggle** | Switch between Fast (Low Latency / High Speed) and Smart (Deep Reasoning / High Accuracy) per-message |
 | **Explanation & Session Caching** | Explanations are cached in Supabase — revisiting a file loads instantly. Chat sessions persist across page reloads |
 | **GitHub OAuth** | Sign in with GitHub via Supabase Auth. JWT verified on the backend using JWKS (no shared secrets) |
 | **Profile & Account Management** | View all analysed repos, sign out, or permanently delete your account (with username confirmation) |
@@ -181,6 +181,7 @@ cp .env.example .env
 | `SUPABASE_SERVICE_ROLE_KEY` | Backend | Supabase service role key (bypasses RLS) |
 | `SUPABASE_JWKS_URL` | Backend | Supabase JWKS endpoint for JWT verification |
 | `GEMINI_API_KEY` | Backend | Google Gemini API key |
+| `GROQ_API_KEY` | Backend | Groq API key |
 | `NVIDIA_API_KEY` | Backend | *(Optional)* NVIDIA NIM API key |
 | `NEXT_PUBLIC_API_URL` | Frontend | Backend URL (`http://localhost:8000` for local dev) |
 | `NEXT_PUBLIC_APP_URL` | Frontend | Frontend URL (`http://localhost:3000` for local dev) |
@@ -279,10 +280,10 @@ Rate limits are enforced **per-user, per-endpoint** using an in-memory tracker. 
                     │            │     │  /explain → LLM SSE  │
                     │            │     │  /chat    → LLM SSE  │
                     │            │     │                      │
-                    │            │     │  ┌── NVIDIA NIM ──┐  │
-                    │            │     │  │  (primary)     │  │
-                    │            │     │  └── Gemini ──────┘  │
-                    │            │     │      (fallback)      │
+                    │            │     │  ┌─── AI Router ──┐  │
+                    │            │     │  │  Groq / Gemini │  │
+                    │            │     │  │   / NVIDIA NIM │  │
+                    │            │     │  └────────────────┘  │
                     │            │     └──────────┬───────────┘
                     │            │                │
                     │     ┌──────▼────────────────▼──────┐
