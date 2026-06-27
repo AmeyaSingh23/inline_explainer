@@ -22,7 +22,7 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 WATERFALLS = {
     "fast": [
-        {"provider": "groq", "model": "llama-3.1-8b-instant"},
+        {"provider": "groq", "model": "llama-3.3-70b-versatile"},
         {"provider": "gemini", "model": "gemini-3-flash-preview"},
         {"provider": "gemini", "model": "gemini-2.5-flash"},
         {"provider": "nvidia", "model": "meta/llama-3.1-70b-instruct"},
@@ -113,7 +113,7 @@ async def _stream_nvidia(system_prompt: str, messages: list[ChatMessage], model:
         else:
             payload_messages.append({"role": m.role, "content": m.content})
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         async with client.stream(
             "POST",
             f"{NVIDIA_BASE_URL}/chat/completions",
@@ -151,7 +151,7 @@ async def _stream_groq(system_prompt: str, messages: list[ChatMessage], model: s
         else:
             payload_messages.append({"role": m.role, "content": m.content})
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         async with client.stream(
             "POST",
             f"{GROQ_BASE_URL}/chat/completions",
@@ -196,7 +196,7 @@ async def _stream_gemini(system_prompt: str, messages: list[ChatMessage], model:
         else:
             contents.append({"role": role, "parts": [{"text": text}]})
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         async with client.stream(
             "POST",
             f"{GEMINI_BASE_URL}/{model}:streamGenerateContent?key={GEMINI_API_KEY}&alt=sse",

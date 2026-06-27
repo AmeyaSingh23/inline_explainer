@@ -61,11 +61,12 @@ export default function PrivacyPage() {
                         <p>
                             To generate explanations and power the chat assistant, InlineExplainer sends the source code
                             you're viewing — along with small related snippets from connected files — to third-party AI
-                            providers: NVIDIA NIM (Llama models) as the primary provider, and Google Gemini as a fallback
-                            if NVIDIA is unavailable. This only happens for <strong>public</strong> repository code that you
-                            chose to load into the app. These providers process the text to generate a response; InlineExplainer
-                            does not control how long they may retain request data on their end, and you should refer to
-                            NVIDIA's and Google's own privacy policies for details on their handling of API requests.
+                            providers: Google Gemini, Groq (Llama models), and NVIDIA NIM (Llama models), using an automated
+                            waterfall routing system to seamlessly fallback if a provider is unavailable. This only happens
+                            for <strong>public</strong> repository code that you chose to load into the app. These providers
+                            process the text to generate a response; InlineExplainer does not control how long they may retain
+                            request data on their end, and you should refer to Google's, Groq's, and NVIDIA's own privacy
+                            policies for details on their handling of API requests.
                         </p>
                     </section>
 
