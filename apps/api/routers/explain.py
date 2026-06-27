@@ -83,7 +83,7 @@ Use plain markdown with short paragraphs. Write like you're walking a colleague 
 
 async def _stream_groq(prompt: str, model: str):
     """Yields text chunks from Groq streaming API."""
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         async with client.stream(
             "POST",
             f"{GROQ_BASE_URL}/chat/completions",
@@ -113,7 +113,7 @@ async def _stream_groq(prompt: str, model: str):
 
 async def _stream_nvidia(prompt: str, model: str):
     """Yields text chunks from NVIDIA NIM streaming API."""
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         async with client.stream(
             "POST",
             f"{NVIDIA_BASE_URL}/chat/completions",
@@ -144,7 +144,7 @@ async def _stream_nvidia(prompt: str, model: str):
 
 async def _stream_gemini(prompt: str, model: str):
     """Yields text chunks from Gemini streaming API."""
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         async with client.stream(
             "POST",
             f"{GEMINI_BASE_URL}/{model}:streamGenerateContent?key={GEMINI_API_KEY}&alt=sse",
