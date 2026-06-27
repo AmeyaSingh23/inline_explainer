@@ -18,8 +18,8 @@ interface Props {
 }
 
 const MODEL_LABELS: Record<ModelTier, { label: string; sublabel: string }> = {
-    fast: { label: "Fast", sublabel: "Llama 70B / Flash" },
-    smart: { label: "Smart", sublabel: "Llama 70B+ / Pro" },
+    fast: { label: "Fast", sublabel: "Low latency / High speed" },
+    smart: { label: "Smart", sublabel: "Deep reasoning / High accuracy" },
 };
 
 export default function ChatTray({ open, onClose, repoChatSession, fileChatSession, activeTab, onTabChange, selectedFileName }: Props) {
