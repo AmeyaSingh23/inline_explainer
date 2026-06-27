@@ -179,6 +179,7 @@ async def explain(payload: ExplainRequest, request: Request, user_id: str = Depe
             yield f"data: {json.dumps({'cached': True})}\n\n"
             yield f"data: {json.dumps({'text': cached})}\n\n"
             yield "data: [DONE]\n\n"
+            print(f"[explain] Explanation retrieved from cache (200 OK)", flush=True)
         return StreamingResponse(cached_stream(), media_type="text/event-stream", headers=STREAM_HEADERS)
 
     # Real cache miss — about to call an LLM. Enforce limit here.
@@ -192,6 +193,8 @@ async def explain(payload: ExplainRequest, request: Request, user_id: str = Depe
     async def generate():
         full_text = []
         provider_worked = False
+        actual_model_used = None
+        actual_provider_used = None
 
         for step in WATERFALL:
             provider = step["provider"]
@@ -213,16 +216,18 @@ async def explain(payload: ExplainRequest, request: Request, user_id: str = Depe
                 
                 async for chunk in stream:
                     if await request.is_disconnected():
-                        print(f"[explain] Client disconnected. Aborting {provider} stream.")
+                        print(f"[explain] Client disconnected. Aborting {provider} stream.", flush=True)
                         return
                     full_text.append(chunk)
                     yield f"data: {json.dumps({'text': chunk})}\n\n"
                 
                 provider_worked = True
+                actual_model_used = model
+                actual_provider_used = provider
                 break
                 
             except Exception as e:
-                print(f"[explain] {provider} ({model}) streaming failed ({e}), falling back to next provider...")
+                print(f"[explain] {provider} ({model}) streaming failed ({e}), falling back to next provider...", flush=True)
                 full_text = []
 
         if provider_worked and full_text:
@@ -230,7 +235,8 @@ async def explain(payload: ExplainRequest, request: Request, user_id: str = Depe
             try:
                 await upsert_explanation(user_id, payload.repository_id, payload.file_path, complete)
             except Exception as e:
-                print(f"[explain] Failed to cache explanation: {e}")
+                print(f"[explain] Failed to cache explanation: {e}", flush=True)
+            print(f"[explain] Response successfully streamed (200 OK) using {actual_provider_used} ({actual_model_used})", flush=True)
         elif not provider_worked:
             yield f"data: {json.dumps({'error': 'All AI providers failed. Please check your API keys.'})}\n\n"
 

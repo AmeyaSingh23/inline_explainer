@@ -244,6 +244,7 @@ async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)
         full_text = []
         provider_worked = False
         actual_model_used = None
+        actual_provider_used = None
 
         for step in waterfall:
             provider = step["provider"]
@@ -269,10 +270,11 @@ async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)
                 
                 provider_worked = True
                 actual_model_used = model
+                actual_provider_used = provider
                 break
                 
             except Exception as e:
-                print(f"[chat] {provider} ({model}) streaming failed ({e}), falling back to next provider...")
+                print(f"[chat] {provider} ({model}) streaming failed ({e}), falling back to next provider...", flush=True)
                 full_text = []
 
         if provider_worked and full_text:
@@ -281,9 +283,10 @@ async def chat(payload: ChatRequest, user_id: str = Depends(get_current_user_id)
             try:
                 await upsert_chat_session(user_id, payload.repository_id, payload.file_path, updated_messages)
             except Exception as e:
-                print(f"[chat] Failed to persist session: {e}")
+                print(f"[chat] Failed to persist session: {e}", flush=True)
             if actual_model_used:
                 yield f"data: {json.dumps({'model_used': actual_model_used})}\n\n"
+                print(f"[chat] Response successfully streamed (200 OK) using {actual_provider_used} ({actual_model_used})", flush=True)
         elif not provider_worked:
             yield f"data: {json.dumps({'error': 'All AI providers failed. Please check your API keys or try again later.'})}\n\n"
 
